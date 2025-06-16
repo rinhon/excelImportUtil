@@ -1,0 +1,659 @@
+package com.zhile.excelutil.service
+
+import com.zhile.excelutil.dao.ImDepartmentRepository
+import com.zhile.excelutil.entity.ImDepartment
+import com.zhile.excelutil.handler.FileProcessingWebSocketHandler
+import com.zhile.excelutil.handler.ProgressData
+import com.zhile.excelutil.utils.FileUtils
+import kotlinx.coroutines.*
+import org.apache.poi.ss.usermodel.*
+import org.slf4j.LoggerFactory
+import org.springframework.stereotype.Service
+import org.springframework.web.multipart.MultipartFile
+import java.io.File
+import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.io.path.fileSize
+
+
+private val logger = LoggerFactory.getLogger(FileProcessingService::class.java)
+private val taskStatus = ConcurrentHashMap<String, TaskStatus>()
+private val processingJobs = ConcurrentHashMap<String, Job>()
+
+@Service
+class FileProcessingService(
+    private val webSocketHandler: FileProcessingWebSocketHandler,
+    private val fileUtil: FileUtils,
+    private val imDepartmentRepository: ImDepartmentRepository
+) {
+
+    /**
+     * 取消指定任务
+     */
+    fun cancelTask(taskId: String): Boolean {
+        // 先尝试取消单个任务
+        val job = processingJobs[taskId]
+        if (job != null) {
+            if (job.isActive) {
+                job.cancel()
+                processingJobs.remove(taskId)
+                updateTaskStatus(taskId, "cancelled", 0, "任务已取消")
+                return true
+            }
+        }
+
+        // 如果没有找到单个任务，可能是批量处理中的任务
+        // 取消对应的批量任务
+        val batchJob = processingJobs.values.find { it.isActive }
+        if (batchJob != null) {
+            // 标记特定任务为取消
+            updateTaskStatus(taskId, "cancelled", 0, "任务已取消")
+
+            // 检查是否所有任务都被取消了，如果是则取消整个批量任务
+            val allTasksCancelled = taskStatus.values
+                .filter { it.status !in listOf("completed", "error") }
+                .all { it.status == "cancelled" }
+
+            if (allTasksCancelled) {
+                batchJob.cancel()
+                processingJobs.clear()
+            }
+
+            return true
+        }
+
+        return false
+    }
+
+    /**
+     * 取消所有任务
+     */
+    fun cancelAllTasks(): Boolean {
+        var cancelled = false
+
+        // 取消所有正在运行的任务
+        processingJobs.values.forEach { job ->
+            if (job.isActive) {
+                job.cancel()
+                cancelled = true
+            }
+        }
+
+        processingJobs.clear()
+
+        // 更新所有未完成任务的状态
+        taskStatus.values
+            .filter { it.status !in listOf("completed", "error", "cancelled") }
+            .forEach { task ->
+                updateTaskStatus(task.taskId, "cancelled", 0, "批量任务已取消")
+            }
+
+        return cancelled
+    }
+
+    /**
+     * 清理已完成的任务（可以定期调用）
+     */
+    fun cleanupCompletedTasks() {
+        val cutoffTime = System.currentTimeMillis() - 3600000 // 1小时前
+        taskStatus.values.removeIf { task ->
+            task.status in listOf("completed", "error", "cancelled") &&
+                    task.updatedAt < cutoffTime
+        }
+    }
+
+    /**
+     * 获取任务状态
+     */
+    fun getTaskStatus(taskId: String): TaskStatus? {
+        return taskStatus[taskId]
+    }
+
+    /**
+     * 获取所有任务状态
+     */
+    fun getAllTasksStatus(taskId: String): TaskStatus? {
+        return taskStatus[taskId]
+    }
+
+    /**
+     * 进程文件异步
+     */
+    fun processFilesAsync(files: List<MultipartFile>, tasks: List<Map<String, String>>, sessionId: String) {
+        //文件持久化存储
+        files.forEach { file ->
+            try {
+                val storedFilePath = fileUtil.saveMultipartFile(file)
+                logger.info("文件已持久化到: $storedFilePath")
+            } catch (e: Exception) {
+                logger.error(e.message)
+            }
+        }
+        val persistenceFiles = fileUtil.listAllStoredFiles()
+
+
+        // 初始化所有任务状态
+        tasks.forEachIndexed { _, task ->
+            val taskId = task["taskId"]!!
+            val fileName = task["fileName"]!!
+
+            taskStatus[taskId] = TaskStatus(
+                taskId = taskId,
+                fileName = fileName,
+                status = "waiting",
+                progress = 0,
+                message = "等待处理"
+            )
+        }
+
+        // 创建单个协程按顺序处理所有文件
+        val job = CoroutineScope(Dispatchers.IO).launch {
+            processFilesSequentially(persistenceFiles, tasks, sessionId)
+        }
+
+        // 使用批次ID来管理整个处理任务
+        val batchId = "batch_${System.currentTimeMillis()}"
+        processingJobs[batchId] = job
+    }
+
+    /**
+     * 按顺序处理excel
+     */
+    private suspend fun processFilesSequentially(
+        files: List<Path>,
+        tasks: List<Map<String, String>>,
+        sessionId: String
+    ) {
+        logger.info("开始依次处理 ${files.size} 个文件")
+
+        try {
+            tasks.forEachIndexed { index, task ->
+                val taskId = task["taskId"]!!
+                val fileName = task["fileName"]!!
+                val file = files[index]
+
+                logger.info("开始处理第 ${index + 1}/${files.size} 个文件: $fileName")
+
+                // 更新其他等待中的任务状态
+                updateWaitingTasksMessage(sessionId, tasks, index, webSocketHandler)
+
+                // 使用 toFile() 扩展函数获取 File 对象
+                val dealFile: File = file.toFile()
+
+                // 现在你可以像操作普通 File 对象一样操作它了
+                if (dealFile.exists()) {
+                    println("文件大小：${file.fileSize()} 字节")
+                } else {
+                    println("文件不存在：${file}")
+                }
+                // 处理当前文件
+                processFile(taskId, fileName, dealFile, index + 1, files.size, sessionId)
+
+                logger.info("完成处理第 ${index + 1}/${files.size} 个文件: $fileName")
+
+                // 在文件之间添加短暂延迟，避免系统负载过高
+                if (index < files.size - 1) {
+                    delay(1000)
+                }
+            }
+            logger.info("所有文件处理完成")
+
+        } catch (e: CancellationException) {
+            logger.info("批量处理任务已取消")
+            // 将所有未完成的任务标记为取消
+            tasks.forEach { task ->
+                val taskId = task["taskId"]!!
+                val currentStatus = taskStatus[taskId]
+                if (currentStatus?.status !in listOf("completed", "error")) {
+                    updateTaskStatus(taskId, "cancelled", 0, "批量任务已取消")
+                }
+            }
+        } catch (e: Exception) {
+            logger.error("批量处理过程中发生错误", e)
+        }
+    }
+
+    /**
+     * 更新等待任务消息
+     */
+    private fun updateWaitingTasksMessage(
+        sessionId: String,
+        tasks: List<Map<String, String>>,
+        currentIndex: Int,
+        webSocketHandler: FileProcessingWebSocketHandler
+    ) {
+        tasks.forEachIndexed { index, task ->
+            val taskId = task["taskId"]!!
+            val currentStatus = taskStatus[taskId]
+
+            if (index > currentIndex && currentStatus?.status == "waiting") {
+                val position = index - currentIndex
+                updateTaskStatus(
+                    taskId,
+                    "waiting",
+                    0,
+                    "排队中，前面还有 $position 个文件待处理"
+                )
+
+                // 发送等待状态更新
+                webSocketHandler.sendToSession(
+                    sessionId,
+                    ProgressData(
+                        type = "processing",
+                        taskId = taskId,
+                        fileName = task["fileName"]!!,
+                        progress = 0,
+                        status = "waiting",
+                        message = "排队中，前面还有 $position 个文件待处理"
+                    )
+                )
+            }
+        }
+    }
+
+    /**
+     * 开始处理excel文件方法
+     */
+    private suspend fun processFile(
+        taskId: String,
+        fileName: String,
+        file: File,
+        currentFileIndex: Int = 1,
+        totalFiles: Int = 1,
+        sessionId: String,
+    ) {
+        try {
+            // 更新状态为处理中
+            updateTaskStatus(taskId, "processing", 5, "开始处理文件 ($currentFileIndex/$totalFiles)")
+
+            // 发送开始处理通知
+            webSocketHandler.sendToSession(
+                sessionId,
+                ProgressData(
+                    type = "processing",
+                    taskId = taskId,
+                    fileName = fileName,
+                    progress = 5,
+                    status = "processing",
+                    message = "开始处理文件 ($currentFileIndex/$totalFiles)"
+                )
+            )
+
+            // 将excel数据保存至中间表
+            processExcelFile(taskId, fileName, file, currentFileIndex, totalFiles, webSocketHandler, sessionId)
+
+            //TODO 调用存储过程接口
+
+            // 完成处理
+            updateTaskStatus(taskId, "completed", 100, "处理完成 ($currentFileIndex/$totalFiles)")
+
+            // 发送完成通知
+            webSocketHandler.sendToSession(
+                sessionId,
+                ProgressData(
+                    type = "completed",
+                    taskId = taskId,
+                    fileName = fileName,
+                    progress = 100,
+                    status = "completed",
+                    message = "处理完成 ($currentFileIndex/$totalFiles)"
+                )
+            )
+
+        } catch (e: CancellationException) {
+            updateTaskStatus(taskId, "cancelled", 0, "任务已取消")
+            logger.info("任务已取消: $taskId")
+            throw e // 重新抛出以停止后续文件处理
+        } catch (e: Exception) {
+            logger.error("处理文件失败: $fileName", e)
+            updateTaskStatus(taskId, "error", 0, "处理失败: ${e.message}")
+
+            // 发送错误通知
+            webSocketHandler.sendToSession(
+                sessionId,
+                ProgressData(
+                    type = "error",
+                    taskId = taskId,
+                    fileName = fileName,
+                    status = "error",
+                    message = "处理失败: ${e.message}"
+                )
+            )
+
+            // 根据配置决定是否继续处理后续文件
+            // 这里选择继续处理，如果需要在出错时停止，可以 throw e
+        }
+    }
+
+    /**
+     * excel处理 为数据库新增数据, 新增完成后
+     */
+    private suspend fun processExcelFile(
+        taskId: String,
+        fileName: String,
+        file: File,
+        currentFileIndex: Int,
+        totalFiles: Int,
+        webSocketHandler: FileProcessingWebSocketHandler,
+        sessionId: String
+    ) {
+        if (!file.exists()) {
+            logger.error("未获取到$fileName ($currentFileIndex/$totalFiles)文件流")
+            webSocketHandler.sendToSession(
+                sessionId,
+                ProgressData(
+                    type = "error",
+                    taskId = taskId,
+                    fileName = fileName,
+                    progress = 0,
+                    status = "error",
+                    message = "后台出错"
+                )
+            )
+            return
+        }
+        // 检查任务是否被取消
+        val currentStatus = taskStatus[taskId]
+        if (currentStatus?.status == "cancelled") {
+            throw CancellationException("任务已取消")
+        }
+        try {
+            val workbook = WorkbookFactory.create(file.inputStream())
+            val sheet = workbook.getSheetAt(0)
+            val totalRows = sheet.lastRowNum + 1
+            val evaluator = workbook.creationHelper.createFormulaEvaluator()
+
+            logger.info("开始处理Excel文件: $fileName ($currentFileIndex/$totalFiles), 总行数: $totalRows")
+
+            // 检查文件是否为空
+            if (totalRows <= 1) {
+                updateTaskStatus(taskId, "processing", 50, "文件为空或只有标题行")
+                return
+            }
+            //TODO 开启事务,新增数据
+            //获取表头
+            // --- 头部数据检测 ---
+            // 通常头部在文件的前几行，这里只检查前5行，避免遍历整个文件
+            val maxHeaderCheckRows = minOf(totalRows, 5)
+            var matchedHeaderInfo: Pair<ExcelHeaderData?, Map<String, Int>>? = null
+            var headerRowIndex = -1 // 记录头部所在的行索引
+
+            for (i in 0 until maxHeaderCheckRows) {
+                val row = sheet.getRow(i)
+                val headerMatch = isValidExcelHeaderRow(row, evaluator)
+                if (headerMatch != null) {
+                    matchedHeaderInfo = headerMatch
+                    headerRowIndex = i
+                    logger.info("Excel文件: $fileName 头部在第 ${i + 1} 行找到，匹配类型: ${headerMatch.first?.name}")
+                    break // 找到头部后，停止检测
+                }
+            }
+
+
+            // 如果没有找到匹配的头部，则认为文件格式不符
+            if (matchedHeaderInfo == null) {
+                webSocketHandler.sendToSession(
+                    sessionId,
+                    ProgressData(
+                        type = "error",
+                        taskId = taskId,
+                        fileName = fileName,
+                        progress = 100,
+                        status = "error", // 状态改为 error
+                        message = "表格($fileName)格式不符合要求，未找到匹配的头部"
+                    )
+                )
+                updateTaskStatus(taskId, "error", 100, "表格($fileName)格式不符合要求，未找到匹配的头部")
+                return // 终止处理
+            }
+
+            val (matchedHeaderType, headerIndexMap) = matchedHeaderInfo
+            val dataStartRowIndex = headerRowIndex + 1
+            //开始处理数据
+            for (i in dataStartRowIndex until totalRows) {
+                // todo 不同表格不同处理方式
+                if (matchedHeaderType == ExcelHeaderData.DEPARTMENT_HEADERS) {
+                    val row = sheet.getRow(i)
+                    val imDepartment = ImDepartment()
+
+                    // 使用headerIndexMap来获取正确的列位置
+                    headerIndexMap.forEach { (headerName, columnIndex) ->
+                        val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                        when (headerName) {
+                            "本级编码", "部门编码" -> imDepartment.code = cellValue
+                            "层级", "部门名称" -> imDepartment.name = cellValue
+                            "全称" -> imDepartment.fullName = cellValue
+                            "父级编码" -> imDepartment.parentCode = cellValue
+                            "父级名称" -> imDepartment.parentName = cellValue
+                            "行政级别", "部门类型" -> imDepartment.departmentType = cellValue
+                            "省份", "备注" -> imDepartment.remarks = cellValue
+                        }
+                    }
+//                    val save = withContext(Dispatchers.IO) {
+//                        imDepartmentRepository.save(imDepartment)
+//                    }
+                }
+
+                // 进度计算：10% - 90%
+                val progress = 10 + ((i + 1) * 80 / totalRows)
+                val message = "正在处理 ($currentFileIndex/$totalFiles) - 第 ${i + 1}/$totalRows 行"
+
+                updateTaskStatus(taskId, "processing", progress, message)
+
+                // 每处理5行或最后一行时发送进度更新
+                if ((i + 1) % 5 == 0 || i == totalRows - 1) {
+                    webSocketHandler.sendToSession(
+                        sessionId,
+                        ProgressData(
+                            type = "processing",
+                            taskId = taskId,
+                            fileName = fileName,
+                            progress = progress,
+                            status = "processing",
+                            message = message
+                        )
+                    )
+                }
+            }
+
+            workbook.close()
+        } catch (e: NoSuchFileException) {
+            logger.error(e.message)
+            logger.error(e.reason)
+            println(e.message)
+            println(e.reason)
+        }
+        // 最后的数据保存
+        val saveMessage = "表格数据导入完成, 请等待最终导入...(数据量越大等待时间越长,请勿关闭窗口)"
+        updateTaskStatus(taskId, "processing", 95, saveMessage)
+
+        webSocketHandler.sendToSession(
+            sessionId,
+            ProgressData(
+                type = "processing",
+                taskId = taskId,
+                fileName = fileName,
+                progress = 95,
+                status = "processing",
+                message = saveMessage
+            )
+        )
+
+
+    }
+
+    /**
+     * 安全地获取单元格中的数据，并将其统一转换为 String 类型。
+     * 数字在转换为字符串时，如果为整数（如 123.0），将转换为不带小数点的形式（如 "123"）。
+     *
+     * @param cell 要获取数据的单元格对象，可能为 null。
+     * @param evaluator FormulaEvaluator 实例，用于评估公式单元格。
+     * @return 单元格数据的 String 表示。如果单元格为 null 或空白，返回空字符串。
+     */
+    fun getCellValueAsString(cell: Cell?, evaluator: FormulaEvaluator): String {
+        if (cell == null) {
+            return "" // 如果单元格本身是 null，返回空字符串
+        }
+
+        return when (cell.cellType) {
+            CellType.STRING -> cell.stringCellValue.trim() // 字符串类型
+            CellType.NUMERIC -> {
+                // 数字类型可能表示数字或日期
+                if (DateUtil.isCellDateFormatted(cell)) {
+                    // 如果是日期格式的数字，获取日期值
+                    cell.dateCellValue.toString() // 或者格式化为特定日期字符串
+                } else {
+                    // 普通数字
+                    val numericValue = cell.numericCellValue
+                    // !!! 关键修改：判断是否为整数，并进行转换 !!!
+                    if (numericValue % 1.0 == 0.0) { // 如果数字的浮点部分为 0
+                        numericValue.toLong().toString() // 转换为 Long 再转 String
+                    } else {
+                        numericValue.toString() // 否则保持浮点数形式
+                    }
+                }
+            }
+
+            CellType.BOOLEAN -> cell.booleanCellValue.toString() // 布尔类型
+            CellType.FORMULA -> {
+                // 公式类型：需要评估公式才能获取其结果值
+                try {
+                    val cellValue = evaluator.evaluate(cell) // 评估公式
+                    when (cellValue.cellType) {
+                        CellType.STRING -> cellValue.stringValue.trim()
+                        CellType.NUMERIC -> {
+                            if (DateUtil.isCellDateFormatted(cell)) { // 公式结果也可能是日期
+                                DateUtil.getJavaDate(cellValue.numberValue).toString()
+                            } else {
+                                val numericValue = cellValue.numberValue
+                                // !!! 关键修改：判断是否为整数，并进行转换 !!!
+                                if (numericValue % 1.0 == 0.0) { // 如果数字的浮点部分为 0
+                                    numericValue.toLong().toString() // 转换为 Long 再转 String
+                                } else {
+                                    numericValue.toString() // 否则保持浮点数形式
+                                }
+                            }
+                        }
+
+                        CellType.BOOLEAN -> cellValue.booleanValue.toString()
+                        CellType.ERROR -> "#ERROR!" // 公式错误
+                        else -> "" // 其他未知类型
+                    }
+                } catch (e: Exception) {
+                    // 捕获公式评估中的任何异常，例如公式无效
+                    logger.error("异常", e.message)
+                    println("警告: 评估公式时出错 ${cell.address.formatAsString()}: ${e.message}")
+                    "#FORMULA_ERROR!"
+                }
+            }
+
+            CellType.BLANK -> "" // 空白单元格
+            CellType.ERROR -> "#ERROR!" // 错误单元格
+            else -> "" // 其他未知或不关心的类型
+        }
+    }
+
+
+    /**
+     * 更新任务状态
+     */
+    private fun updateTaskStatus(taskId: String, status: String, progress: Int, message: String) {
+        taskStatus[taskId] = taskStatus[taskId]?.copy(
+            status = status,
+            progress = progress,
+            message = message,
+            updatedAt = System.currentTimeMillis()
+        ) ?: TaskStatus(
+            taskId = taskId,
+            fileName = "",
+            status = status,
+            progress = progress,
+            message = message
+        )
+    }
+
+    /**
+     * 检查给定的 Excel 行是否包含 ExcelHeaderData 枚举中定义的必要属性。
+     * 不要求完全匹配或顺序一致，只要包含必要的属性即可。
+     *
+     * @param row 从 Excel 表格中获取的当前行对象。
+     * @param evaluator 用于评估公式的 FormulaEvaluator 实例。
+     * @return 如果行包含任何一个预定义头部列表的所有必要属性，则返回对应的ExcelHeaderData；否则返回null。
+     */
+    fun isValidExcelHeaderRow(row: Row, evaluator: FormulaEvaluator): Pair<ExcelHeaderData?, Map<String, Int>>? {
+        val rowData = mutableListOf<String>()
+        val headerIndexMap = mutableMapOf<String, Int>() // 存储列名与索引的映射
+
+        // 获取行中的所有列名
+        for (i in 0 until row.lastCellNum) {
+            val cell = row.getCell(i)
+            val cellValue = if (cell != null) {
+                when (cell.cellType) {
+                    CellType.STRING -> cell.stringCellValue.trim()
+                    CellType.NUMERIC -> cell.numericCellValue.toString()
+                    CellType.BOOLEAN -> cell.booleanCellValue.toString()
+                    CellType.FORMULA -> {
+                        val cellValue = evaluator.evaluate(cell)
+                        when (cellValue.cellType) {
+                            CellType.STRING -> cellValue.stringValue.trim()
+                            CellType.NUMERIC -> cellValue.numberValue.toString()
+                            CellType.BOOLEAN -> cellValue.booleanValue.toString()
+                            else -> ""
+                        }
+                    }
+
+                    else -> ""
+                }
+            } else ""
+
+            rowData.add(cellValue)
+            if (cellValue.isNotEmpty()) {
+                headerIndexMap[cellValue] = i
+            }
+        }
+
+        // 检查每个预定义的表头格式
+        for (headerEnum in ExcelHeaderData.entries) {
+            // 检查是否包含所有必要的属性
+            val containsAllRequired = headerEnum.headers.all { required ->
+                rowData.any { it == required }
+            }
+
+            if (containsAllRequired) {
+                println("该行包含 ${headerEnum.name} 的所有必要属性！")
+                // 返回匹配的枚举和列索引映射
+                return Pair(headerEnum, headerIndexMap)
+            }
+        }
+
+        println("该行不包含任何预定义的必要属性集合。")
+        return null
+    }
+
+
+}
+
+enum class ExcelHeaderData(val headers: List<String>) {
+    DEPARTMENT_HEADERS(
+        listOf(
+            "部门编码", "部门名称", "全称", "父级编码", "父级名称", "部门类型", "备注"
+        )
+    ),
+    DEPARTMENT_RMS_HEADERS(
+        listOf(
+            "本级编码", "层级", "全称", "父级编码",
+            "父级名称", "行政级别", "省份"
+        )
+    ),
+}
+
+
+data class TaskStatus(
+    val taskId: String,
+    val fileName: String,
+    val status: String, // "waiting", "processing", "completed", "error", "cancelled"
+    val progress: Int,
+    val message: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
