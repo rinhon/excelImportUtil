@@ -377,10 +377,10 @@ class FileProcessingService(
             val maxHeaderCheckRows = minOf(totalRows, 5)
             var matchedHeaderInfo: Pair<ExcelHeaderData?, Map<String, Int>>? = null
             var headerRowIndex = -1 // 记录头部所在的行索引
-
+            var headerMatch: Pair<ExcelHeaderData?, Map<String, Int>>? = null
             for (i in 0 until maxHeaderCheckRows) {
                 val row = sheet.getRow(i)
-                val headerMatch = isValidExcelHeaderRow(row, evaluator)
+                headerMatch = isValidExcelHeaderRow(row, evaluator)
                 if (headerMatch != null) {
                     matchedHeaderInfo = headerMatch
                     headerRowIndex = i
@@ -388,7 +388,6 @@ class FileProcessingService(
                     break // 找到头部后，停止检测
                 }
             }
-
 
             // 如果没有找到匹配的头部，则认为文件格式不符
             if (matchedHeaderInfo == null) {
@@ -429,9 +428,9 @@ class FileProcessingService(
                             "省份", "备注" -> imDepartment.remarks = cellValue
                         }
                     }
-//                    val save = withContext(Dispatchers.IO) {
-//                        imDepartmentRepository.save(imDepartment)
-//                    }
+                    val save = withContext(Dispatchers.IO) {
+                        imDepartmentRepository.save(imDepartment)
+                    }
                 }
 
                 // 进度计算：10% - 90%
@@ -455,7 +454,7 @@ class FileProcessingService(
                     )
                 }
             }
-
+            //关闭
             workbook.close()
         } catch (e: NoSuchFileException) {
             logger.error(e.message)
@@ -478,8 +477,6 @@ class FileProcessingService(
                 message = saveMessage
             )
         )
-
-
     }
 
     /**
@@ -574,15 +571,16 @@ class FileProcessingService(
 
     /**
      * 检查给定的 Excel 行是否包含 ExcelHeaderData 枚举中定义的必要属性。
-     * 不要求完全匹配或顺序一致，只要包含必要的属性即可。
+     * 不要求完全匹配或顺序一致，支持模糊匹配（忽略大小写、空格、常见标点符号）。
      *
      * @param row 从 Excel 表格中获取的当前行对象。
      * @param evaluator 用于评估公式的 FormulaEvaluator 实例。
-     * @return 如果行包含任何一个预定义头部列表的所有必要属性，则返回对应的ExcelHeaderData；否则返回null。
+     * @return 如果行包含任何一个预定义头部列表的所有必要属性，则返回对应的ExcelHeaderData和列索引映射；否则返回null。
      */
     fun isValidExcelHeaderRow(row: Row, evaluator: FormulaEvaluator): Pair<ExcelHeaderData?, Map<String, Int>>? {
         val rowData = mutableListOf<String>()
-        val headerIndexMap = mutableMapOf<String, Int>() // 存储列名与索引的映射
+        val headerIndexMap = mutableMapOf<String, Int>() // 存储标准列名与索引的映射
+        val normalizedHeaderMap = mutableMapOf<String, String>() // 存储标准列名与实际列名的映射
 
         // 获取行中的所有列名
         for (i in 0 until row.lastCellNum) {
@@ -606,33 +604,72 @@ class FileProcessingService(
                 }
             } else ""
 
-            rowData.add(cellValue)
             if (cellValue.isNotEmpty()) {
+                rowData.add(cellValue)
+                // 存储原始列名和索引
                 headerIndexMap[cellValue] = i
             }
         }
 
         // 检查每个预定义的表头格式
         for (headerEnum in ExcelHeaderData.entries) {
-            // 检查是否包含所有必要的属性
+            // 创建一个映射来存储匹配的标准列名和实际列名
+            val matchedHeaders = mutableMapOf<String, String>()
+
+            // 检查是否包含所有必要的属性（使用模糊匹配）
             val containsAllRequired = headerEnum.headers.all { required ->
-                rowData.any { it == required }
+                val match = rowData.find { actual ->
+                    // 标准化字符串进行比较（忽略大小写、空格、常见标点符号）
+                    normalizeString(actual).contains(normalizeString(required)) ||
+                            normalizeString(required).contains(normalizeString(actual))
+                }
+                if (match != null) {
+                    matchedHeaders[required] = match
+                    normalizedHeaderMap[required] = match
+                }
+                match != null
             }
 
             if (containsAllRequired) {
-                println("该行包含 ${headerEnum.name} 的所有必要属性！")
-                // 返回匹配的枚举和列索引映射
-                return Pair(headerEnum, headerIndexMap)
+                logger.info("找到匹配的表头格式: ${headerEnum.name}")
+                // 创建新的headerIndexMap，使用标准列名作为键
+                val standardizedHeaderIndexMap = matchedHeaders.mapValues { (_, actualHeader) ->
+                    headerIndexMap[actualHeader] ?: -1
+                }
+                return Pair(headerEnum, standardizedHeaderIndexMap)
             }
         }
 
-        println("该行不包含任何预定义的必要属性集合。")
+        logger.info("未找到匹配的表头格式")
         return null
+    }
+
+    /**
+     * 标准化字符串以进行比较
+     * 1. 转换为小写
+     * 2. 移除所有空格
+     * 3. 移除常见标点符号
+     * 4. 统一全角字符为半角字符
+     */
+    private fun normalizeString(input: String): String {
+        return input.lowercase()
+            .replace(Regex("\\s+"), "") // 移除所有空格
+            .replace(Regex("[,.:;，。：；、]"), "") // 移除常见标点符号
+            .replace("（", "(")
+            .replace("）", ")")
+            .replace("【", "[")
+            .replace("】", "]")
+            .trim()
     }
 
 
 }
 
+/**
+ * @author Rinhon
+ * @date 2025/6/17 09:05
+ * @description: 表头枚举类
+ */
 enum class ExcelHeaderData(val headers: List<String>) {
     DEPARTMENT_HEADERS(
         listOf(
@@ -645,9 +682,18 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "父级名称", "行政级别", "省份"
         )
     ),
+    USER_HEADERS(
+        listOf(
+
+        )
+    ),
 }
 
-
+/**
+ * @author Rinhon
+ * @date 2025/6/17 09:08
+ * @description: 任务数据类
+ */
 data class TaskStatus(
     val taskId: String,
     val fileName: String,

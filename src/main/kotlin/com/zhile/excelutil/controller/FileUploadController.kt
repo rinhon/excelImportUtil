@@ -8,18 +8,24 @@ import org.springframework.web.multipart.MultipartFile
 import java.util.*
 
 
-/**
- * 表格校验
+/***
+ * @author Rinhon
+ * @date 2025/6/17 09:08
+ * @description:  excel文件导入
  */
 @RestController
 @CrossOrigin(origins = ["*"])
-@RequestMapping(name = "表格校验", value = ["/fileUpload"])
+@RequestMapping(name = "excel文件导入", value = ["/fileUpload"])
 class FileUploadController(
     private val fileProcessingService: FileProcessingService,
     private val webSocketHandler: FileProcessingWebSocketHandler
 ) {
 
-
+    /**
+     * @author Rinhon
+     * @date 2020/12/17 16:58
+     * @description 文件上传
+     */
     @PostMapping("/multipleFiles")
     fun uploadMultipleFiles(
         @RequestParam("files") files: Array<MultipartFile>, @RequestHeader("Session-Id") sessionId: String
@@ -38,7 +44,10 @@ class FileUploadController(
             // 验证文件类型
             val allowedExtensions = listOf("xls", "xlsx")
             val invalidFiles = files.filter { file ->
-                val extension = file.originalFilename?.substringAfterLast('.', "")?.lowercase()
+                // 验证文件类型
+                val extension = file.originalFilename
+                    ?.substringAfterLast('.', "")
+                    ?.lowercase()
                 extension !in allowedExtensions
             }
 
@@ -91,7 +100,11 @@ class FileUploadController(
 //            ResponseEntity.notFound().build()
 //        }
 //    }
-
+    /**
+     * @author Rinhon
+     * @date 2020/12/17 16:58
+     * @description 取消单个任务
+     */
     @DeleteMapping("/tasks/{taskId}")
     fun cancelTask(@PathVariable taskId: String): ResponseEntity<Map<String, Any>> {
         val cancelled = fileProcessingService.cancelTask(taskId)
@@ -102,6 +115,11 @@ class FileUploadController(
         )
     }
 
+    /**
+     * @author Rinhon
+     * @date 2020/12/17 16:58
+     * @description 取消所有任务
+     */
     @DeleteMapping("/tasks")
     fun cancelAllTasks(): ResponseEntity<Map<String, Any>> {
         val cancelled = fileProcessingService.cancelAllTasks()

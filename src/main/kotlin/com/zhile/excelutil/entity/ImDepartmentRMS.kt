@@ -5,7 +5,11 @@ import org.springframework.data.annotation.Id
 import org.springframework.data.relational.core.mapping.Column
 import org.springframework.data.relational.core.mapping.Table
 
-
+/**
+ * @author Rinhon
+ * @date 2025/6/17 09:09
+ * @description:
+ */
 @Table("IM_DEPARTMENT_RMS")
 data class ImDepartmentRMS(
     @Id

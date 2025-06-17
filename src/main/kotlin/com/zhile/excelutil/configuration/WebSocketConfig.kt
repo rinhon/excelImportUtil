@@ -6,6 +6,11 @@ import org.springframework.web.socket.config.annotation.EnableWebSocket
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 
+/**
+ * @Author: Rinhon
+ * @Date: 2023/4/23 16:25
+ * @description:webSocket配置
+ */
 @Configuration
 @EnableWebSocket
 class WebSocketConfig(

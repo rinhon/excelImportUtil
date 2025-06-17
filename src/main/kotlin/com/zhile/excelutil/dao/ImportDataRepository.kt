@@ -1,4 +1,4 @@
-package com.zhile.excelutil.entity
+package com.zhile.excelutil.dao
 
 
 import org.springframework.data.repository.query.Param
@@ -15,4 +15,5 @@ interface ImportDataRepository {
     fun callImportDepartment(
         @Param("p_organ_id") organId: Long // 参数名需要与存储过程中的参数名一致
     ): Int // 函数返回 0 或 1
+
 }

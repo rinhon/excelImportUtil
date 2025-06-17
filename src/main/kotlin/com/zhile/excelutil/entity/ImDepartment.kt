@@ -5,7 +5,10 @@ import org.springframework.data.annotation.Id
 import org.springframework.data.relational.core.mapping.Column
 import org.springframework.data.relational.core.mapping.Table
 
-
+/**
+ * @author Rinhon
+ * @date 2020/12/21 16:39
+ */
 @Table("IM_DEPARTMENT")
 data class ImDepartment(
     //id主键

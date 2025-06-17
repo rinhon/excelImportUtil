@@ -9,6 +9,11 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import java.io.FileNotFoundException
 
+/**
+ * @author Rinhon
+ * @date 2025/6/16 19:14
+ * @description: 模板下载控制器
+ */
 @RestController
 @RequestMapping("/api/excel")
 class TemplateDownloadController {
