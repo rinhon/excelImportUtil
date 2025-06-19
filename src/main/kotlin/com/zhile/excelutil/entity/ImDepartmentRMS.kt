@@ -13,7 +13,8 @@ import org.springframework.data.relational.core.mapping.Table
 @Table("IM_DEPARTMENT_RMS")
 data class ImDepartmentRMS(
     @Id
-    @Transient
+    @Column("F_KEY_ID")
+    var keyId: Long? = null,
     //编码
     @Column("F_CODE")
     var code: String? = null,

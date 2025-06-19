@@ -6,6 +6,9 @@ import org.springframework.data.relational.core.mapping.Table
 
 @Table("IM_ITEM_NATURE_ACCOUNT")
 data class ImItemNatureAccount(
+    @Id
+    @Column("F_KEY_ID")
+    var keyId: Long? = null,
     @Column("F_ITEM_NATURE")
     var itemNature: String? = null,
     @Column("F_INVENTORY_ACCT_CODE")
@@ -28,8 +31,6 @@ data class ImItemNatureAccount(
     var prolEsteInputAcctCode: String? = null, //暂估进项科目
     @Column("F_PROL_ESTE_OUTPUT_ACCT_CODE")
     var prolEsteOutputAcctCode: String? = null,  //暂估销项科目
-    @Id
-    @Transient
     @Column("F_ITEM_NATURE_ID")
     var itemNatureId: Long? = null
 )

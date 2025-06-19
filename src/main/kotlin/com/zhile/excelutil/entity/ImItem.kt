@@ -1,8 +1,10 @@
 package com.zhile.excelutil.entity
 
+
 import org.springframework.data.annotation.Id
 import org.springframework.data.relational.core.mapping.Column
 import org.springframework.data.relational.core.mapping.Table
+
 
 /**
  * @author Rinhon
@@ -11,6 +13,10 @@ import org.springframework.data.relational.core.mapping.Table
  */
 @Table("IM_ITEM")
 data class ImItem(
+
+    @Id
+    @Column("F_KEY_ID")
+    var keyId: Long? = null,
     @Column("F_CODE")
     var code: String? = null,  //编码
     @Column("F_NAME")
@@ -63,8 +69,10 @@ data class ImItem(
     var departmentCode: String? = null,  //编辑部门编码
     @Column("F_DEPARTMENT_NAME")
     var departmentName: String? = null,  //编辑部门名称
-    @Column("F_DUTY_EDITOR")
-    var dutyEditor: String? = null,  //责任编辑
+    @Column("F_DUTY_EDITOR_NAME")
+    var dutyEditorName: String? = null,  //责任编辑
+    @Column("F_DUTY_EDITOR_CODE")
+    var dutyEditorCode: String? = null,  //责任编辑
     @Column("F_PUBLISH_PERIOD")
     var publishPeriod: String? = null,  //出版期间
     @Column("F_PRINT_SHEET")
@@ -79,6 +87,8 @@ data class ImItem(
     var bindingType: String? = null,  //装订方式
     @Column("F_LANGUAGE")
     var language: String? = null,  //文种
+    @Column("F_NOTE_LANGUAGE")
+    var noteLanguage: String? = null,  //正文文字
     @Column("F_SUMMARY")
     var summary: String? = null,  //内容简介
     @Column("F_PERFACE")
@@ -93,9 +103,6 @@ data class ImItem(
     var cipInfo: String? = null,  //CIP信息
     @Column("F_REMARKS")
     var remarks: String? = null,  //备注
-
-    @Id
-    @Transient
     @Column("F_ID")
     var id: Long? = null,
     @Column("F_ITEM_TYPE_ID")

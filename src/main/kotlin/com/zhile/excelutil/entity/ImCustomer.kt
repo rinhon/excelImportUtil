@@ -11,6 +11,10 @@ import org.springframework.data.relational.core.mapping.Table
  */
 @Table("IM_CUSTOMER")
 data class ImCustomer(
+    @Id
+    @Column("F_KEY_ID")
+    var keyId: Long? = null,
+
     @Column("F_CODE")
     var code: String? = null,
     @Column("F_NAME")
@@ -43,8 +47,7 @@ data class ImCustomer(
     var correspondenceTel: String? = null,
     @Column("F_CORRESPONDENCE_ADDRESS")
     var correspondenceAddress: String? = null,
-    @Id
-    @Transient
+
     @Column("F_ID")
     var id: Long? = null,
     @Column("F_TOP_BANK_ID")

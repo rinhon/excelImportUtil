@@ -10,8 +10,9 @@ import org.springframework.data.relational.core.mapping.Table
 @Table("IM_POSITION")
 data class ImPosition(
     @Id
+    @Column("F_KEY_ID")
+    var keyId: Long? = null,
     @Column("F_ID")
-    @Transient
     var id: Long? = null,
     @Column("F_CODE")
     var code: String? = null,

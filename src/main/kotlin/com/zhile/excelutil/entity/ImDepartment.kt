@@ -7,14 +7,15 @@ import org.springframework.data.relational.core.mapping.Table
 
 /**
  * @author Rinhon
- * @date 2020/12/21 16:39
+ * @date 2025/06/17 16:39
  */
 @Table("IM_DEPARTMENT")
 data class ImDepartment(
-    //id主键
     @Id
+    @Column("F_KEY_ID")
+
+    var keyId: Long? = null,
     @Column("F_ID")
-    @Transient
     var id: Long? = null,
 
     //编码

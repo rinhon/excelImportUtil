@@ -11,7 +11,6 @@ import java.util.*
 
 class FileUtils(private val tempStoragePath: String) {
 
-    // 使用 SLF4J 日志记录器
     private val logger = LoggerFactory.getLogger(FileUtils::class.java)
 
     private val temporaryDirectory: Path = Paths.get(tempStoragePath).toAbsolutePath().normalize()
@@ -41,7 +40,7 @@ class FileUtils(private val tempStoragePath: String) {
                     if (path != temporaryDirectory) { // 避免删除根目录本身
                         try {
                             Files.delete(path)
-                            logger.debug("已删除临时文件/目录: $path")
+                            logger.debug("已删除临时文件/目录: {}", path)
                         } catch (e: IOException) {
                             logger.warn("无法删除临时文件/目录: $path", e)
                         }
@@ -50,7 +49,7 @@ class FileUtils(private val tempStoragePath: String) {
             logger.info("临时存储目录清空完成: $temporaryDirectory")
         } catch (e: IOException) {
             logger.error("清空临时存储目录失败: $temporaryDirectory", e)
-            // 考虑是否需要抛出异常或仅记录警告
+
         }
     }
 
@@ -62,8 +61,7 @@ class FileUtils(private val tempStoragePath: String) {
      * @throws IOException 如果文件保存失败。
      */
     fun saveMultipartFile(multipartFile: MultipartFile): Path {
-        // 每次保存前清空临时目录
-        cleanTemporaryStorage()
+
 
         if (multipartFile.isEmpty) {
             throw IOException("上传文件为空。")

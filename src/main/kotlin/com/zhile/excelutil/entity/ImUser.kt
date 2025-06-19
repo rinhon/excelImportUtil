@@ -9,14 +9,18 @@ import org.springframework.data.relational.core.mapping.Table
  */
 @Table("IM_USER")
 data class ImUser(
-
     @Id
-    @Transient
+    @Column("F_KEY_ID")
+    var keyId: Long? = null,
+    
     @Column("F_ID")
     var id: Long? = null,
     //编码
     @Column("F_CODE")
     var code: String? = null,
+    //名称
+    @Column("F_NAME")
+    var name: String? = null,
     //电话
     @Column("F_PHONE")
     var phone: String? = null,
