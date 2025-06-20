@@ -189,7 +189,7 @@ class FileProcessingWebSocketHandler : WebSocketHandler {
 }
 
 data class ProgressData(
-    val type: String, // "processing", "completed", "error", "cancelled"
+    val type: String, // "processing", "completed", "error", "cancelled","dealData"
     val taskId: String,
     val fileName: String? = null,
     val progress: Int = 0,

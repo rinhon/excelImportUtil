@@ -1,6 +1,5 @@
 package com.zhile.excelutil.entity
 
-import org.springframework.data.annotation.Id
 import org.springframework.data.relational.core.mapping.Column
 import org.springframework.data.relational.core.mapping.Table
 
@@ -9,7 +8,7 @@ import org.springframework.data.relational.core.mapping.Table
  */
 @Table("IM_POSITION")
 data class ImPosition(
-    @Id
+
     @Column("F_KEY_ID")
     var keyId: Long? = null,
     @Column("F_ID")
@@ -23,6 +22,7 @@ data class ImPosition(
     @Column("F_MANAGER")
     var manager: String? = null,
     @Column("F_ADDRESS")
-    var address: String? = null
-
+    var address: String? = null,
+    @Column("F_TYPE")
+    var type: String? = null
 )

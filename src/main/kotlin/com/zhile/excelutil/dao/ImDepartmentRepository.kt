@@ -14,16 +14,15 @@ interface ImDepartmentRepository : CrudRepository<ImDepartment, Long> {
     @Query(
         """
               INSERT INTO IM_DEPARTMENT (
-                F_KEY_ID, F_CODE, F_NAME, F_FULL_NAME, F_PARENT_CODE, 
+                F_CODE, F_NAME, F_FULL_NAME, F_PARENT_CODE, 
                 F_PARENT_NAME, F_DEPARTMENT_TYPE, F_REMARKS, F_PARENT_ID, F_TYPE_ID
             ) VALUES  (
-                :id, :code, :name, :fullName, :parentCode, 
+                :code, :name, :fullName, :parentCode, 
                 :parentName, :departmentType, :remarks, :parentId, :typeId
             )
         """
     )
     fun insertDepartment(
-        @Param("id") id: Long?,
         @Param("code") code: String?,
         @Param("name") name: String?,
         @Param("fullName") fullName: String?,

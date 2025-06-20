@@ -23,6 +23,8 @@ data class ImCustomer(
     var abbr: String? = null,
     @Column("F_CATALOG")
     var catalog: String? = null,
+    @Column("F_DYNASTY")
+    var dynasty: String? = null,
     @Column("F_IN_UNIT")
     var inUnit: String? = null,
     @Column("F_NATURE1")
@@ -33,8 +35,7 @@ data class ImCustomer(
     var customerType: String? = null,
     @Column("F_AREA")
     var area: String? = null,
-    @Column("F_BANK_ACCOUNT")
-    var bankAccount: String? = null,
+
     @Column("F_BANK")
     var bank: String? = null,
     @Column("F_CORRESPONDENCE_CONTACT")
@@ -47,6 +48,16 @@ data class ImCustomer(
     var correspondenceTel: String? = null,
     @Column("F_CORRESPONDENCE_ADDRESS")
     var correspondenceAddress: String? = null,
+
+    @Column("F_ACCOUNT_NAME")
+
+    var accountName: String? = null,
+    @Column("F_ACCOUNT_NO")
+
+    var accountNo: String? = null,
+    @Column("F_BANK_NAME")
+
+    var bankName: String? = null,
 
     @Column("F_ID")
     var id: Long? = null,

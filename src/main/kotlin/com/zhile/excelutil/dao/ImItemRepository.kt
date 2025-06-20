@@ -20,7 +20,7 @@ interface ImItemRepository : CrudRepository<ImItem, Long> {
     @Query(
         """
         INSERT INTO IM_ITEM (
-            F_KEY_ID, F_CODE, F_NAME, F_ABBR, F_BAR_CODE, 
+            F_CODE, F_NAME, F_ABBR, F_BAR_CODE, 
             F_SET_PRICE, F_SPEC, F_PUBLISH_TYPE, F_PUBLISH_METHOD, F_CATEGORY, 
             F_ITEM_TYPE, F_NATURE, F_LENGTH, F_WIDTH, F_HEIGHT, 
             F_PACK_UNIT, F_UNIT, F_KIT, F_ISBN, F_AUX_CODE, 
@@ -33,7 +33,7 @@ interface ImItemRepository : CrudRepository<ImItem, Long> {
             F_FORMAT_SIZE_ID, F_NATURE_ID, F_LANGUAGE_ID, F_NOTE_LANGUAGE_ID, F_PUBLISH_METHOD_ID, 
             F_UNIT_ID, F_BINDING_TYPE_ID
         ) VALUES (
-            :keyId, :code, :name, :abbr, :barCode, 
+            :code, :name, :abbr, :barCode, 
             :setPrice, :spec, :publishType, :publishMethod, :category, 
             :itemType, :nature, :length, :width, :height, 
             :packUnit, :unit, :kit, :isbn, :auxCode, 
@@ -49,7 +49,6 @@ interface ImItemRepository : CrudRepository<ImItem, Long> {
         """
     )
     fun insertItem(
-        @Param("keyId") keyId: Long?,
         @Param("code") code: String?,
         @Param("name") name: String?,
         @Param("abbr") abbr: String?,

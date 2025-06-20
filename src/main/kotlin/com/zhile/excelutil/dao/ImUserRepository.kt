@@ -14,16 +14,15 @@ interface ImUserRepository : CrudRepository<ImUser, Long> {
     @Query(
         """
         INSERT INTO IM_USER (
-            F_KEY_ID, F_CODE, F_NAME, F_PHONE, F_DEPARTMENT_CODE, 
+            F_CODE, F_NAME, F_PHONE, F_DEPARTMENT_CODE, 
             F_DEPARTMENT_NAME, F_SEX, F_REMARKS, F_ID, F_DEPARTMENT_ID
         ) VALUES  (
-            :keyId, :code, :name, :phone, :departmentCode, 
+            :code, :name, :phone, :departmentCode, 
             :departmentName, :sex, :remarks, :id, :departmentId
         )
     """
     )
     fun insertUser(
-        @Param("keyId") keyId: Long?,
         @Param("code") code: String?,
         @Param("name") name: String?,
         @Param("phone") phone: String?,
