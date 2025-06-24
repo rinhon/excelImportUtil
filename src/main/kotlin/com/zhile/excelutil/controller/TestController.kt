@@ -1,7 +1,6 @@
 package com.zhile.excelutil.controller
 
 import com.zhile.excelutil.dao.ImDepartmentRepository
-import com.zhile.excelutil.service.TestService
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -16,7 +15,6 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping(name = "test", value = ["/test"])
 class TestController(
     private val imDepartmentRepository: ImDepartmentRepository,
-    private val testService: TestService,
 
     ) {
 
@@ -41,7 +39,6 @@ class TestController(
 //            println("-------------------------")
 //            println(save)
 
-            testService.add();
 
         } catch (e: Exception) {
             e.printStackTrace()

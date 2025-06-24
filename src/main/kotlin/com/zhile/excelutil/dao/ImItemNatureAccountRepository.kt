@@ -19,18 +19,17 @@ interface ImItemNatureAccountRepository : CrudRepository<ImItemNatureAccount, Lo
     @Query(
         """
         INSERT INTO IM_ITEM_NATURE_ACCOUNT (
-            F_KEY_ID, F_ITEM_NATURE, F_INVENTORY_ACCT_CODE, F_INCOME_ACCT_CODE, F_COST_ACCT_CODE,
+            F_ITEM_NATURE, F_INVENTORY_ACCT_CODE, F_INCOME_ACCT_CODE, F_COST_ACCT_CODE,
             F_INPUT_TAX_ACCT_CODE, F_OUTPUT_TAX_ACCT_CODE, F_STOCK_OUT_ITEM_ACCT_CODE, F_PROL_ESTE_ACCT_CODE,
-            F_PROL_ESTE_RECEIVE_ACCT_CODE, F_PROL_ESTE_INPUT_ACCT_CODE, F_PROL_ESTE_OUTPUT_ACCT_CODE, F_ITEM_NATURE_ID
+            F_PROL_ESTE_RECEIVE_ACCT_CODE, F_PROL_ESTE_INPUT_ACCT_CODE, F_PROL_ESTE_OUTPUT_ACCT_CODE, F_ITEM_NATURE_ID         
         ) VALUES (
-            :keyId, :itemNature, :inventoryAcctCode, :incomeAcctCode, :costAcctCode,
+            :itemNature, :inventoryAcctCode, :incomeAcctCode, :costAcctCode,
             :inputTaxAcctCode, :outputTaxAcctCode, :stockOutItemAcctCode, :prolEsteAcctCode,
             :prolEsteReceiveAcctCode, :prolEsteInputAcctCode, :prolEsteOutputAcctCode, :itemNatureId
         )
         """
     )
     fun insertItemNatureAccount(
-        @Param("keyId") keyId: Long?,
         @Param("itemNature") itemNature: String?,
         @Param("inventoryAcctCode") inventoryAcctCode: String?,
         @Param("incomeAcctCode") incomeAcctCode: String?,

@@ -23,7 +23,7 @@ class FileProcessingWebSocketHandler : WebSocketHandler {
         sessions[session.id] = session
         logger.info("WebSocket连接已建立: ${session.id}")
 
-        var principal: Principal? = session.principal
+        val principal: Principal? = session.principal
         val usernameToClient: String // 准备发送给客户端的用户名
 
         if (principal == null) {

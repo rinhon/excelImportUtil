@@ -1,7 +1,6 @@
 package com.zhile.excelutil.entity
 
 
-import org.springframework.data.annotation.Id
 import org.springframework.data.relational.core.mapping.Column
 import org.springframework.data.relational.core.mapping.Table
 
@@ -11,10 +10,9 @@ import org.springframework.data.relational.core.mapping.Table
  */
 @Table("IM_DEPARTMENT")
 data class ImDepartment(
-    @Id
     @Column("F_KEY_ID")
-
     var keyId: Long? = null,
+
     @Column("F_ID")
     var id: Long? = null,
 

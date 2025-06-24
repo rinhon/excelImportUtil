@@ -1,6 +1,5 @@
 package com.zhile.excelutil.entity
 
-import org.springframework.data.annotation.Id
 import org.springframework.data.relational.core.mapping.Column
 import org.springframework.data.relational.core.mapping.Table
 
@@ -9,10 +8,9 @@ import org.springframework.data.relational.core.mapping.Table
  */
 @Table("IM_USER")
 data class ImUser(
-    @Id
     @Column("F_KEY_ID")
     var keyId: Long? = null,
-    
+
     @Column("F_ID")
     var id: Long? = null,
     //编码
@@ -38,6 +36,14 @@ data class ImUser(
     var remarks: String? = null,
     //部门Id
     @Column("F_DEPARTMENT_ID")
-    var departmentId: Long? = null,
+    var departmentId: Long? = null,    //性别
+    @Column("F_LOGIN")
+    var login: String? = null,
+    //备注
+    @Column("F_ATTRIBUTE")
+    var attribute: String? = null,
+    //部门Id
+    @Column("F_PERMIT")
+    var permit: String? = null,
 
     )

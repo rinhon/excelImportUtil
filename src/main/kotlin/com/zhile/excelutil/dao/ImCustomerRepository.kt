@@ -24,6 +24,7 @@ interface ImCustomerRepository : CrudRepository<ImCustomer, Long> {
                 ,:customerTypeId,:cardTypeId
             )
         """
+
     )
     fun insertCustomer(
         @Param("code") code: String?,

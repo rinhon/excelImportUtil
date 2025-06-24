@@ -30,9 +30,7 @@ class FileUploadController(
     fun uploadMultipleFiles(
         @RequestParam("files") files: Array<MultipartFile>, @RequestHeader("Session-Id") sessionId: String
     ): ResponseEntity<Map<String, Any>> {
-
         return try {
-
             if (files.isEmpty()) {
                 return ResponseEntity.badRequest().body(
                     mapOf(
@@ -40,7 +38,6 @@ class FileUploadController(
                     )
                 )
             }
-
             // 验证文件类型
             val allowedExtensions = listOf("xls", "xlsx")
             val invalidFiles = files.filter { file ->
@@ -69,8 +66,9 @@ class FileUploadController(
 
             //获取当前请求的sessionID
             println("session id = (${sessionId})")
+            val organId: Long = 212;
             // 异步处理文件
-            fileProcessingService.processFilesAsync(files.toList(), tasks, sessionId)
+            fileProcessingService.processFilesAsync(files.toList(), tasks, sessionId, organId)
 
             ResponseEntity.ok(
                 mapOf(
