@@ -51,7 +51,8 @@ class FileProcessingService(
     private val imImportResultRepository: ImImportResultRepository,
     private val imUserRoleRepository: ImUserRoleRepository,
     private val imPositionUserRepository: ImPositionUserRepository,
-    private val excelDealUtils: ExcelDealUtils
+    private val excelDealUtils: ExcelDealUtils,
+    val imCustomerBusinessSetRepository: ImCustomerBusinessSetRepository
 ) {
 
     /**
@@ -324,7 +325,7 @@ class FileProcessingService(
                 // 跳过名为以下字段的工作簿
                 when (sheet.sheetName) {
                     "填写说明" -> continue@skipSheetHeaderCheck
-                    "部门类型" -> continue@skipSheetHeaderCheck
+//                    "部门类型" -> continue@skipSheetHeaderCheck
                     "字典表" -> continue@skipSheetHeaderCheck
                     "字典" -> continue@skipSheetHeaderCheck
                     "地图社审批参考" -> continue@skipSheetHeaderCheck
@@ -398,6 +399,7 @@ class FileProcessingService(
                     IM_COST_ITEM_ACCOUNT_HEADERS -> imCostItemAccountRepository.deleteAllImCostItemAccount()
                     IM_STOCK_INIT_HEADERS -> imStockInitRepository.deleteAllImStockInit()
                     SELL_BILL_HEADERS -> imSellBillRepository.deleteAllImSellBill()
+                    CUSTOMER_BUSINESS_SET_HEADERS -> imCustomerBusinessSetRepository.deleteAllImCustomerBusinessSet()
                     OTHERS_SKIP_HEADERS -> continue@skipSheetHeaderCheck
                     null -> continue@skipSheetHeaderCheck
                 }
@@ -482,8 +484,8 @@ class FileProcessingService(
                                     "性别" -> imUser.sex = cellValue
                                     "能否登录系统" -> imUser.login = cellValue
                                     "备注" -> imUser.remarks = cellValue
-                                    "用户属性" -> imUser.attribute
-                                    "查询权限" -> imUser.permit
+                                    "用户属性" -> imUser.attribute = cellValue
+                                    "查询权限" -> imUser.permit = cellValue
                                 }
                             }
                             imUserRepository.insertUser(
@@ -525,10 +527,9 @@ class FileProcessingService(
                                 val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "职员编码" -> imUserRole.userCode = cellValue
-                                    "职员名称" -> imUserRole.userName
-                                    "所属部门编码" -> imUserRole.roleCode
-                                    "所属部门名称" -> imUserRole.roleName
-                                    "角色名称" -> imUserRole.roleName
+                                    "职员名称" -> imUserRole.userName = cellValue
+                                    "角色编码" -> imUserRole.roleCode = cellValue
+                                    "角色名称" -> imUserRole.roleName = cellValue
                                 }
                             }
                             imUserRoleRepository.insertUserRole(
@@ -565,7 +566,7 @@ class FileProcessingService(
                                 id = null
                             )
                         }
-                        // 4.1 仓库人员分配中间表-->业务员、仓库人员分配-工作簿2  XXXX差很多字段
+                        // 4.1 仓库人员分配中间表-->业务员、仓库人员分配-工作簿2  √√√√√√
                         IM_POSITION_USERS_HEADERS -> {
                             val imPositionUser = ImPositionUser()
                             // 使用headerIndexMap来获取正确的列位置
@@ -574,16 +575,18 @@ class FileProcessingService(
                                 when (headerName) {
                                     "职员编码" -> imPositionUser.userCode = cellValue
                                     "职员姓名" -> imPositionUser.userName = cellValue
-//                                    "手机号" -> imPositionUser.tel = cellValue
-//                                    "部门编码" -> imPositionUser.departmentCode = cellValue
-//                                    "部门名称" -> imPositionUser.departmentName = cellValue
-//                                    "百创通大仓" -> imPositionUser.百创通大仓 = cellValue
-//                                    "次品仓" -> imPositionUser.次品仓 = cellValue
-//                                    "直发仓" -> imPositionUser.直发仓 = cellValue
-//                                    "待处理仓" -> imPositionUser.待处理仓 = cellValue
+                                    "仓库编码" -> imPositionUser.positionCode = cellValue
+                                    "仓库名称" -> imPositionUser.positionName = cellValue
                                 }
-
                             }
+                            imPositionUserRepository.insertPositionUser(
+                                userCode = imPositionUser.userCode,
+                                userName = imPositionUser.userName,
+                                positionCode = imPositionUser.positionCode,
+                                positionName = imPositionUser.positionName,
+                                userId = null,
+                                positionId = null
+                            )
                         }
                         // 5.往来单位中间表-->往来单位档案 √√√√
                         CUSTOMER_HEADERS -> {
@@ -636,6 +639,45 @@ class FileProcessingService(
                                 areaId = null,
                                 customerTypeId = null,
                                 cardTypeId = null
+                            )
+                        }
+                        // 5.往来单位中间表->往来单位 业务员
+                        CUSTOMER_BUSINESS_SET_HEADERS -> {
+                            val imCustomerBusinessSet = ImCustomerBusinessSet()
+                            // 使用headerIndexMap来获取正确的列位置
+                            headerIndexMap.forEach { (headerName, columnIndex) ->
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                when (headerName) {
+                                    "往来单位编码" -> imCustomerBusinessSet.customerCode = cellValue
+                                    "往来单位名称" -> imCustomerBusinessSet.customerName = cellValue
+                                    "采购员编码" -> imCustomerBusinessSet.purchaseUserCode = cellValue
+                                    "采购员" -> imCustomerBusinessSet.purchaseUserName = cellValue
+                                    "采购部门编码" -> imCustomerBusinessSet.purchaseDepartmentCode = cellValue
+                                    "采购部门名称" -> imCustomerBusinessSet.purchaseDepartmentName = cellValue
+                                    "销售员编码" -> imCustomerBusinessSet.saleUserCode = cellValue
+                                    "销售员" -> imCustomerBusinessSet.saleUserName = cellValue
+                                    "销售部门编码" -> imCustomerBusinessSet.saleDepartmentCode = cellValue
+                                    "销售部门名称" -> imCustomerBusinessSet.saleDepartmentName = cellValue
+                                    "备注" -> imCustomerBusinessSet.remarks = cellValue
+                                }
+                            }
+                            imCustomerBusinessSetRepository.insertCustomerInfo(
+                                customerCode = imCustomerBusinessSet.customerCode,
+                                customerName = imCustomerBusinessSet.customerName,
+                                purchaseUserCode = imCustomerBusinessSet.purchaseUserCode,
+                                purchaseUserName = imCustomerBusinessSet.purchaseUserName,
+                                purchaseDepartmentCode = imCustomerBusinessSet.purchaseDepartmentCode,
+                                purchaseDepartmentName = imCustomerBusinessSet.purchaseDepartmentName,
+                                saleUserCode = imCustomerBusinessSet.saleUserCode,
+                                saleUserName = imCustomerBusinessSet.saleUserName,
+                                saleDepartmentCode = imCustomerBusinessSet.saleDepartmentCode,
+                                saleDepartmentName = imCustomerBusinessSet.saleDepartmentName,
+                                remarks = imCustomerBusinessSet.remarks,
+                                customerId = null,
+                                purchaseUserId = null,
+                                purchaseDepartmentId = null,
+                                saleUserId = null,
+                                saleDepartmentId = null
                             )
                         }
                         // 6.物品中间表-->存货档案 √√√√
@@ -1332,8 +1374,7 @@ enum class ExcelHeaderData(val headers: List<String>) {
         listOf(
             "职员编码",
             "职员名称",
-            "所属部门编码",
-            "所属部门名称",
+            "角色编码",
             "角色名称"
 
         )
@@ -1348,12 +1389,8 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "职员编码",
             "职员姓名",
             "手机号",
-            "部门编码",
-            "部门名称",
-            "百创通大仓",
-            "次品仓",
-            "直发仓",
-            "待处理仓"
+            "仓库编码",
+            "仓库名称"
         )
     ),
     CUSTOMER_HEADERS(
@@ -1376,6 +1413,21 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "证件号码",
             "函证人电话",
             "函证地址"
+        )
+    ),
+    CUSTOMER_BUSINESS_SET_HEADERS(
+        listOf(
+            "往来单位编码",
+            "往来单位名称",
+            "采购员编码",
+            "采购员",
+            "采购部门编码",
+            "采购部门名称",
+            "销售员编码",
+            "销售员",
+            "销售部门编码",
+            "销售部门名称",
+            "备注"
         )
     ),
     ITEM_HEADERS(

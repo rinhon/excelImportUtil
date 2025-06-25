@@ -18,13 +18,13 @@ interface ImPositionUserRepository : CrudRepository<ImPositionUser, Long> {
     @Query(
         """
         INSERT INTO IM_POSITION_USER (
-            F_USER_CODE, F_USER_NAME, F_POSITION_CODE, F_POSITION_NAME, F_USER_ID, F_POSITION_ID
+            F_USER_CODE, F_USER_NAME, F_POSITION_CODE, F_POSITION_NAME ,F_USER_ID, F_POSITION_ID
         ) VALUES (
             :userCode, :userName, :positionCode, :positionName, :userId, :positionId
         )
         """
     )
-    fun insertRole(
+    fun insertPositionUser(
         @Param("userCode") userCode: String?,
         @Param("userName") userName: String?,
         @Param("positionCode") positionCode: String?,
