@@ -1,5 +1,6 @@
 package com.zhile.excelutil.controller
 
+import com.zhile.excelutil.service.ExcelDownloadService
 import org.springframework.core.io.InputStreamResource
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
@@ -16,7 +17,7 @@ import java.io.FileNotFoundException
  */
 @RestController
 @RequestMapping("/api/excel")
-class TemplateDownloadController {
+class TemplateDownloadController(private val excelDownloadService: ExcelDownloadService) {
 
     @GetMapping("/downloadTemplate")
     fun downloadTemplate(): ResponseEntity<InputStreamResource> {
@@ -57,6 +58,32 @@ class TemplateDownloadController {
         } catch (e: Exception) {
             // 捕获其他潜在异常，返回 500 错误
             e.printStackTrace() // 打印堆栈跟踪以便调试
+            ResponseEntity.internalServerError().build()
+        }
+    }
+
+
+    @GetMapping("/downloadErrorExcel")
+    fun downloadErrorExcel(): ResponseEntity<InputStreamResource> {
+        return try {
+            // 使用Service生成Excel文件
+            val inputStream = excelDownloadService.generateErrorDataExcel()
+            val resource = InputStreamResource(inputStream)
+
+            // 设置HTTP响应头
+            val headers = HttpHeaders().apply {
+                set(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"error_data.xlsx\"")
+                contentType =
+                    MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            }
+
+            // 返回响应
+            ResponseEntity.ok()
+                .headers(headers)
+                .body(resource)
+        } catch (e: Exception) {
+            // 捕获异常，返回 500 错误
+            e.printStackTrace()
             ResponseEntity.internalServerError().build()
         }
     }

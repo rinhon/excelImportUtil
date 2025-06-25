@@ -33,4 +33,12 @@ interface ImPositionUserRepository : CrudRepository<ImPositionUser, Long> {
         @Param("positionId") positionId: Long?
     )
 
+    @Modifying
+    @Query(
+        """
+              DELETE FROM IM_POSITION_USER
+        """
+    )
+    fun deleteAllImPositionUser()
+
 }

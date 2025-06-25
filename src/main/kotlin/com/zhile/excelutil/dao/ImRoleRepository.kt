@@ -30,4 +30,13 @@ interface ImRoleRepository : CrudRepository<ImRole, Long> {
         @Param("name") name: String?,
         @Param("id") id: Long?
     )
+
+    @Modifying
+    @Query(
+        """
+              DELETE FROM IM_ROLE
+        """
+    )
+    fun deleteAllImRole() {
+    }
 }

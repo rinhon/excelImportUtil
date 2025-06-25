@@ -38,4 +38,12 @@ interface ImUserRepository : CrudRepository<ImUser, Long> {
     ) {
     }
 
+    @Modifying
+    @Query(
+        """
+              DELETE FROM IM_USER 
+        """
+    )
+    fun deleteAllImUser()
+
 }

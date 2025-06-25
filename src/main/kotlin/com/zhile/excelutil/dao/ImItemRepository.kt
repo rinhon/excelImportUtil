@@ -106,5 +106,13 @@ interface ImItemRepository : CrudRepository<ImItem, Long> {
         @Param("unitId") unitId: Long?,
         @Param("bindingTypeId") bindingTypeId: Long?
     )
+
+    @Modifying
+    @Query(
+        """
+        DELETE FROM IM_ITEM
+        """
+    )
+    fun deleteAllImItem()
 }
 

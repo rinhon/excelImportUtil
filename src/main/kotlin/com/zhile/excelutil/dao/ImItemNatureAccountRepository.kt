@@ -43,4 +43,12 @@ interface ImItemNatureAccountRepository : CrudRepository<ImItemNatureAccount, Lo
         @Param("prolEsteOutputAcctCode") prolEsteOutputAcctCode: String?,
         @Param("itemNatureId") itemNatureId: Long?
     )
+
+    @Modifying
+    @Query(
+        """
+        DELETE FROM IM_ITEM_NATURE_ACCOUNT
+        """
+    )
+    fun deleteAllImItemNatureAccount()
 }

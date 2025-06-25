@@ -51,4 +51,12 @@ interface ImCustomerRepository : CrudRepository<ImCustomer, Long> {
         @Param("customerTypeId") customerTypeId: Long?,
         @Param("cardTypeId") cardTypeId: Long?
     )
+
+    @Modifying
+    @Query(
+        """
+            DELETE FROM IM_CUSTOMER
+        """
+    )
+    fun deleteAllImCustomer()
 }

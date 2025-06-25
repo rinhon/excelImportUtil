@@ -67,4 +67,13 @@ interface ImSellBillRepository : CrudRepository<ImSellBill, Long> {
         @Param("remarks") remarks: String?,
         @Param("firstInTime") firstInTime: String?
     )
+
+    @Modifying
+    @Query(
+        """
+        DELETE FROM IM_SELL_BILL
+        """
+    )
+    fun deleteAllImSellBill()
+
 }

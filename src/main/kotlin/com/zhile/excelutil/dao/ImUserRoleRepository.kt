@@ -25,7 +25,7 @@ interface ImUserRoleRepository : CrudRepository<ImUserRole, Long> {
         )
     """
     )
-    fun insertUser(
+    fun insertUserRole(
         @Param("userCode") userCode: String?,
         @Param("userName") userName: String?,
         @Param("roleCode") roleCode: String?,
@@ -34,5 +34,13 @@ interface ImUserRoleRepository : CrudRepository<ImUserRole, Long> {
         @Param("roleId") roleId: Long?
     ) {
     }
+
+    @Modifying
+    @Query(
+        """
+            DELETE FROM IM_USER_ROLE
+        """
+    )
+    fun deleteAllImUserRole()
 
 }

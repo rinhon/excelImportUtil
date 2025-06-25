@@ -31,4 +31,17 @@ interface ImDepartmentTypeRepository : CrudRepository<ImDepartmentType, Long> {
         @Param("id") id: Long?,
         @Param("code") code: String?
     )
+
+    // 自定义插入方法（如果需要处理特殊逻辑）
+    @Modifying
+    @Query(
+        """
+            DELETE FROM IM_DEPARTMENT
+        """
+    )
+    fun deleteAllDepartment(
+
+    )
+
+
 }

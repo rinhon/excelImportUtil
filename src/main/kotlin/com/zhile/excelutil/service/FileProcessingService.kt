@@ -2,14 +2,18 @@ package com.zhile.excelutil.service
 
 import com.zhile.excelutil.dao.*
 import com.zhile.excelutil.entity.*
-import com.zhile.excelutil.exception.ImportDataException
 import com.zhile.excelutil.handler.FileProcessingWebSocketHandler
 import com.zhile.excelutil.handler.ProgressData
 import com.zhile.excelutil.service.ExcelHeaderData.*
+import com.zhile.excelutil.utils.ExcelDealUtils
 import com.zhile.excelutil.utils.FileUtils
 import kotlinx.coroutines.*
-import org.apache.poi.ss.usermodel.*
+import org.apache.poi.ss.usermodel.CellType
+import org.apache.poi.ss.usermodel.FormulaEvaluator
+import org.apache.poi.ss.usermodel.Row
+import org.apache.poi.ss.usermodel.WorkbookFactory
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.multipart.MultipartFile
@@ -46,91 +50,14 @@ class FileProcessingService(
     private val imStockInitRepository: ImStockInitRepository,
     private val imImportResultRepository: ImImportResultRepository,
     private val imUserRoleRepository: ImUserRoleRepository,
-    val imPositionUserRepository: ImPositionUserRepository,
+    private val imPositionUserRepository: ImPositionUserRepository,
+    private val excelDealUtils: ExcelDealUtils
 ) {
-
-    /**
-     * 取消指定任务
-     */
-    fun cancelTask(taskId: String): Boolean {
-        // 先尝试取消单个任务
-        val job = processingJobs[taskId]
-        if (job != null) {
-            if (job.isActive) {
-                job.cancel()
-                processingJobs.remove(taskId)
-                updateTaskStatus(taskId, "cancelled", 0, "任务已取消")
-                return true
-            }
-        }
-
-        // 如果没有找到单个任务，可能是批量处理中的任务
-        // 取消对应的批量任务
-        val batchJob = processingJobs.values.find { it.isActive }
-        if (batchJob != null) {
-            // 标记特定任务为取消
-            updateTaskStatus(taskId, "cancelled", 0, "任务已取消")
-            // 检查是否所有任务都被取消了，如果是则取消整个批量任务
-            val allTasksCancelled =
-                taskStatus.values.filter { it.status !in listOf("completed", "error") }.all { it.status == "cancelled" }
-            if (allTasksCancelled) {
-                batchJob.cancel()
-                processingJobs.clear()
-            }
-            return true
-        }
-        return false
-    }
-
-    /**
-     * 取消所有任务
-     */
-    fun cancelAllTasks(): Boolean {
-        var cancelled = false
-        // 取消所有正在运行的任务
-        processingJobs.values.forEach { job ->
-            if (job.isActive) {
-                job.cancel()
-                cancelled = true
-            }
-        }
-        processingJobs.clear()
-        // 更新所有未完成任务的状态
-        taskStatus.values.filter { it.status !in listOf("completed", "error", "cancelled") }.forEach { task ->
-            updateTaskStatus(task.taskId, "cancelled", 0, "批量任务已取消")
-        }
-
-        return cancelled
-    }
-
-    /**
-     * 清理已完成的任务（可以定期调用）
-     */
-    fun cleanupCompletedTasks() {
-        val cutoffTime = System.currentTimeMillis() - 3600000 // 1小时前
-        taskStatus.values.removeIf { task ->
-            task.status in listOf("completed", "error", "cancelled") && task.updatedAt < cutoffTime
-        }
-    }
-
-    /**
-     * 获取任务状态
-     */
-    fun getTaskStatus(taskId: String): TaskStatus? {
-        return taskStatus[taskId]
-    }
-
-    /**
-     * 获取所有任务状态
-     */
-    fun getAllTasksStatus(taskId: String): TaskStatus? {
-        return taskStatus[taskId]
-    }
 
     /**
      * 进程文件异步
      */
-    @Transactional(rollbackForClassName = ["Exception"])
+    @Transactional(rollbackForClassName = ["ImportDataException", "Exception"])
     fun processFilesAsync(
         files: List<MultipartFile>,
         tasks: List<Map<String, String>>,
@@ -192,7 +119,6 @@ class FileProcessingService(
                 // 获取 File 对象
                 val dealFile: File = file.toFile()
 
-                // 现在你可以像操作普通 File 对象一样操作它了
                 if (dealFile.exists()) {
                     println("文件大小：${file.fileSize()} 字节")
                 } else {
@@ -208,9 +134,30 @@ class FileProcessingService(
                     delay(1000)
                 }
             }
+            // 检查每个任务的状态，只对成功处理但未发送完成通知的任务发送通知
+            tasks.forEachIndexed { index, task ->
+                val taskId = task["taskId"]!!
+                val fileName = task["fileName"]!!
+                val currentStatus = taskStatus[taskId]
 
-            //调用存储过程
-
+                // 只有当任务状态为processing且进度不为100%时才发送完成通知
+                // 这样可以避免对已经发送过完成或错误通知的任务重复发送
+                if (currentStatus?.status == "processing" && currentStatus.progress < 100) {
+                    val completeMessage = "文件处理完成"
+                    updateTaskStatus(taskId, "completed", 100, completeMessage)
+                    webSocketHandler.sendToSession(
+                        sessionId, ProgressData(
+                            type = "completed",
+                            taskId = taskId,
+                            fileName = fileName,
+                            progress = 100,
+                            status = "completed",
+                            message = completeMessage
+                        )
+                    )
+                    logger.info("发送完成通知: $fileName (taskId: $taskId)")
+                }
+            }
 
             logger.info("所有文件处理完成")
 
@@ -366,10 +313,14 @@ class FileProcessingService(
             throw CancellationException("任务已取消")
         }
         try {
+
+
             val workbook = WorkbookFactory.create(file.inputStream())
             // 标记循环
             skipSheetHeaderCheck@ for (i in 0 until workbook.numberOfSheets) {
                 val sheet = workbook.getSheetAt(i)
+
+                println("开始处理工作簿:${fileName}------------ ${sheet.sheetName}")
                 // 跳过名为以下字段的工作簿
                 when (sheet.sheetName) {
                     "填写说明" -> continue@skipSheetHeaderCheck
@@ -379,6 +330,10 @@ class FileProcessingService(
                     "地图社审批参考" -> continue@skipSheetHeaderCheck
                     "岭南社审批参考" -> continue@skipSheetHeaderCheck
                     "组织架构图" -> continue@skipSheetHeaderCheck
+                    "其他数据" -> continue@skipSheetHeaderCheck
+                    "其它数据" -> continue@skipSheetHeaderCheck
+                    "其他" -> continue@skipSheetHeaderCheck
+                    "其它" -> continue@skipSheetHeaderCheck
 //                    "ERP物品类型&财务分类&分线产品对应表" -> continue@skipSheetHeaderCheck
                 }
                 val totalRows = sheet.lastRowNum + 1
@@ -388,7 +343,7 @@ class FileProcessingService(
 
                 // 检查文件是否为空
                 if (totalRows <= 1) {
-                    updateTaskStatus(taskId, "processing", 50, "文件为空或只有标题行")
+                    updateTaskStatus(taskId, "processing", 50, "工作簿为空或只有标题行")
                     return false
                 }
                 //获取表头
@@ -408,25 +363,44 @@ class FileProcessingService(
                         break@findSheetHeader // 找到头部后，停止检测
                     }
                 }
-
+                val number = i + 1;
                 // 如果没有找到匹配的头部，则认为文件格式不符
                 if (matchedHeaderInfo == null) {
-                    webSocketHandler.sendToSession(
-                        sessionId, ProgressData(
-                            type = "error",
-                            taskId = taskId,
-                            fileName = fileName,
-                            progress = 100,
-                            status = "error", // 状态改为 error
-                            message = "表格($fileName)-($i)工作簿,格式不符合要求，未找到匹配的头部"
-                        )
-                    )
-                    updateTaskStatus(taskId, "error", 100, "表格($fileName)格式不符合要求，未找到匹配的头部")
-                    return false// 终止处理
+//                    webSocketHandler.sendToSession(
+//                        sessionId, ProgressData(
+//                            type = "error",
+//                            taskId = taskId,
+//                            fileName = fileName,
+//                            progress = 100,
+//                            status = "error", // 状态改为 error
+//                            message = "表格 $fileName $number 工作簿,格式不符合要求，未找到匹配的头部"
+//                        )
+//                    )
+//                    updateTaskStatus(taskId, "error", 100, "表格($fileName)格式不符合要求，未找到匹配的头部")
+                    println("跳过该工作簿")
+                    continue@skipSheetHeaderCheck// 终止处理
                 }
 
                 val (matchedHeaderType, headerIndexMap) = matchedHeaderInfo
                 val dataStartRowIndex = headerRowIndex + 1
+                //根据表头先清空对应的中间表
+                when (matchedHeaderType) {
+                    DEPARTMENT_HEADERS -> imDepartmentTypeRepository.deleteAllDepartment()
+                    DEPARTMENT_TYPE_HEADERS -> imDepartmentRepository.deleteAllImDepartment()
+                    USER_HEADERS -> imUserRepository.deleteAllImUser()
+                    ROLE_HEADERS -> imRoleRepository.deleteAllImRole()
+                    USER_ROLE_HEADERS -> imUserRoleRepository.deleteAllImUserRole()
+                    POSITION_HEADERS -> imPositionRepository.deleteAllImPosition()
+                    IM_POSITION_USERS_HEADERS -> imPositionUserRepository.deleteAllImPositionUser()
+                    CUSTOMER_HEADERS -> imCustomerRepository.deleteAllImCustomer()
+                    ITEM_HEADERS -> imItemRepository.deleteAllImItem()
+                    ITEM_NATURE_ACCOUNT_HEADERS -> imItemNatureAccountRepository.deleteAllImItemNatureAccount()
+                    IM_COST_ITEM_ACCOUNT_HEADERS -> imCostItemAccountRepository.deleteAllImCostItemAccount()
+                    IM_STOCK_INIT_HEADERS -> imStockInitRepository.deleteAllImStockInit()
+                    SELL_BILL_HEADERS -> imSellBillRepository.deleteAllImSellBill()
+                    OTHERS_SKIP_HEADERS -> continue@skipSheetHeaderCheck
+                    null -> continue@skipSheetHeaderCheck
+                }
                 //开始处理数据
                 dealData@ for (i in dataStartRowIndex until totalRows) {
                     val row = sheet.getRow(i)
@@ -436,11 +410,11 @@ class FileProcessingService(
                     }
                     // 在处理每一行之前，添加检查行是否包含有效数据的逻辑
                     var hasData = false
-                    for (i in 0 until row.lastCellNum) {
-                        val cellValue = getCellValueAsString(row.getCell(i), evaluator)
+                    checkCell@ for (i in 0 until row.lastCellNum) {
+                        val cellValue = excelDealUtils.getCellValueAsString(row.getCell(i), evaluator)
                         if (cellValue.isNotEmpty()) {
                             hasData = true
-                            break
+                            break@checkCell
                         }
                     }
                     if (!hasData) {
@@ -450,10 +424,9 @@ class FileProcessingService(
                         // 1.1部门 类型中间表-->部门设置表-工作簿2  XXXX字段对不上
                         DEPARTMENT_TYPE_HEADERS -> {
                             val imDepartmentType = ImDepartmentType()
-                            imDepartmentTypeRepository.deleteAll()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "部门类型" -> imDepartmentType.name = cellValue
                                     "备注" -> imDepartmentType.remarks = cellValue
@@ -469,10 +442,9 @@ class FileProcessingService(
                         // 1.2部门 数据中间表-->部门设置表-工作簿1  √√√√
                         DEPARTMENT_HEADERS -> {
                             val imDepartment = ImDepartment()
-                            imDepartmentRepository.deleteAll()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "本级编码", "部门编码" -> imDepartment.code = cellValue
                                     "层级", "部门名称" -> imDepartment.name = cellValue
@@ -498,10 +470,9 @@ class FileProcessingService(
                         // 2.职员数据中间表-->职员设置表-工作簿1  √√√√√√ 缺少 用户属性 查询权限
                         USER_HEADERS -> {
                             val imUser = ImUser()
-                            imUserRepository.deleteAll()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "职员名称" -> imUser.name = cellValue
                                     "职员编码" -> imUser.code = cellValue
@@ -533,10 +504,9 @@ class FileProcessingService(
                         //3.1 角色数据中间表-->职员角色设置表-工作簿2  √√√√√√
                         ROLE_HEADERS -> {
                             val imUser = ImRole()
-                            imRoleRepository.deleteAll()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "角色名称" -> imUser.name = cellValue
                                     "角色编码" -> imUser.code = cellValue
@@ -551,9 +521,8 @@ class FileProcessingService(
                         // 3.2 职员角色中间表-->职员角色设置表-工作簿1  √√√√√√
                         USER_ROLE_HEADERS -> {
                             val imUserRole = ImUserRole()
-                            imUserRoleRepository.deleteAll()
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "职员编码" -> imUserRole.userCode = cellValue
                                     "职员名称" -> imUserRole.userName
@@ -562,14 +531,21 @@ class FileProcessingService(
                                     "角色名称" -> imUserRole.roleName
                                 }
                             }
+                            imUserRoleRepository.insertUserRole(
+                                userCode = imUserRole.userCode,
+                                userName = imUserRole.userName,
+                                roleCode = imUserRole.roleCode,
+                                roleName = imUserRole.roleName,
+                                userId = null,
+                                roleId = null
+                            )
                         }
                         // 4.货位中间表-->业务员、仓库人员分配-工作簿1  √√√√√√
                         POSITION_HEADERS -> {
                             val imPosition = ImPosition()
-                            imPositionRepository.deleteAll()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "仓库编码" -> imPosition.code = cellValue
                                     "仓库名称" -> imPosition.name = cellValue
@@ -592,10 +568,9 @@ class FileProcessingService(
                         // 4.1 仓库人员分配中间表-->业务员、仓库人员分配-工作簿2  XXXX差很多字段
                         IM_POSITION_USERS_HEADERS -> {
                             val imPositionUser = ImPositionUser()
-                            imPositionUserRepository.deleteAll()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "职员编码" -> imPositionUser.userCode = cellValue
                                     "职员姓名" -> imPositionUser.userName = cellValue
@@ -615,7 +590,7 @@ class FileProcessingService(
                             val imCustomer = ImCustomer()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "单位/个人编码" -> imCustomer.code = cellValue
                                     "单位/个人名称" -> imCustomer.name = cellValue
@@ -668,7 +643,7 @@ class FileProcessingService(
                             val imItem = ImItem()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "物品编码" -> imItem.code = cellValue
                                     "物品名称" -> imItem.name = cellValue
@@ -780,7 +755,7 @@ class FileProcessingService(
                             val imItemNatureAccount = ImItemNatureAccount()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "财务分类" -> imItemNatureAccount.itemNature = cellValue
                                     "存货科目" -> imItemNatureAccount.inventoryAcctCode = cellValue
@@ -815,7 +790,7 @@ class FileProcessingService(
                             val imCostItemAccount = ImCostItemAccount()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "ERP编码" -> imCostItemAccount.costItemCode = cellValue
                                     "费用项目名称" -> imCostItemAccount.costItemName = cellValue
@@ -864,7 +839,7 @@ class FileProcessingService(
                             val imStockInit = ImStockInit()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "物品编码" -> imStockInit.itemCode = cellValue
                                     "物品名称" -> imStockInit.itemName = cellValue
@@ -899,7 +874,7 @@ class FileProcessingService(
                             val imSellBill = ImSellBill()
                             // 使用headerIndexMap来获取正确的列位置
                             headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                 when (headerName) {
                                     "销售订单号" -> imSellBill.orderBillNo = cellValue
                                     "订单日期" -> imSellBill.orderBillDate = cellValue
@@ -978,7 +953,7 @@ class FileProcessingService(
                             continue
                         }
 
-
+                        OTHERS_SKIP_HEADERS -> continue
                     }
                     // 进度计算：10% - 90%
                     val progress = 10 + ((i + 1) * 80 / totalRows)
@@ -1001,288 +976,222 @@ class FileProcessingService(
                     }
                 }
                 //处理完成根据表头调用存储过程
-                when (matchedHeaderType) {
-                    DEPARTMENT_HEADERS -> {
-                        //导入前 清除该类型的数据
-                        imImportResultRepository.deleteByType("部门")
-                        //部门 导入检查
-                        if (oraclePackageService.importDepartment(organId) == 1) {
-                            throw ImportDataException("部门 数据处理失败")
-                        }
-                        println("部门导入完成")
-                        updateTaskStatus(taskId, "completed", 100, "部门导入完成")
-
-                        webSocketHandler.sendToSession(
-                            sessionId, ProgressData(
-                                type = "completed",
-                                taskId = taskId,
-                                fileName = fileName,
-                                progress = 100,
-                                status = "completed",
-                                message = "部门导入完成"
-                            )
-                        )
-                    }
-
-                    DEPARTMENT_TYPE_HEADERS -> {
-                        //导入前 清除该类型的数据
-                        imImportResultRepository.deleteByType("部门类型")
-                        //部门 类型导入
-                        if (oraclePackageService.importDepartmentType() == 1) {
-                            throw ImportDataException("部门类型数据处理失败")
-                        }
-                        println("部门类型导入检查")
-                        updateTaskStatus(taskId, "completed", 100, "部门类型导入完成")
-                        webSocketHandler.sendToSession(
-                            sessionId, ProgressData(
-                                type = "completed",
-                                taskId = taskId,
-                                fileName = fileName,
-                                progress = 100,
-                                status = "completed",
-                                message = "部门类型导入完成"
-                            )
-                        )
-                    }
-
-                    USER_HEADERS -> {
-                        //导入前 清除该类型的数据
-                        imImportResultRepository.deleteByType("职员")
-                        //职员导入
-                        if (oraclePackageService.importUser(organId) == 1) {
-                            return false
-                        }
-                        updateTaskStatus(taskId, "completed", 100, "职员导入完成")
-                        webSocketHandler.sendToSession(
-                            sessionId, ProgressData(
-                                type = "completed",
-                                taskId = taskId,
-                                fileName = fileName,
-                                progress = 100,
-                                status = "completed",
-                                message = "职员导入完成"
-                            )
-                        )
-                    }
-
-                    ROLE_HEADERS -> {
-                        //导入前 清除该类型的数据
-                        imImportResultRepository.deleteByType("角色")
-                        //系统角色表导入
-                        if (oraclePackageService.importRole(organId) == 1) {
-                            return false
-                        }
-                        updateTaskStatus(taskId, "completed", 100, "系统角色导入完成")
-                        webSocketHandler.sendToSession(
-                            sessionId, ProgressData(
-                                type = "completed",
-                                taskId = taskId,
-                                fileName = fileName,
-                                progress = 100,
-                                status = "completed",
-                                message = "系统角色导入完成"
-                            )
-                        )
-                    }
-
-                    USER_ROLE_HEADERS -> {
-                        //导入前 清除该类型的数据
-                        imImportResultRepository.deleteByType("职员角色")
-                        //职员角色表导入
-                        if (oraclePackageService.importUserRole(organId) == 1) {
-                            return false
-                        }
-                        updateTaskStatus(taskId, "completed", 100, "职员角色导入完成")
-                        webSocketHandler.sendToSession(
-                            sessionId, ProgressData(
-                                type = "completed",
-                                taskId = taskId,
-                                fileName = fileName,
-                                progress = 100,
-                                status = "completed",
-                                message = "职员角色导入完成"
-                            )
-                        )
-                    }
-
-                    POSITION_HEADERS -> {
-                        //导入前 清除该类型的数据
-                        imImportResultRepository.deleteByType("货位")
-                        //职员角色表导入
-                        if (oraclePackageService.importPosition(organId) == 1) {
-                            return false
-                        }
-                        updateTaskStatus(taskId, "completed", 100, "货位导入完成")
-                        webSocketHandler.sendToSession(
-                            sessionId, ProgressData(
-                                type = "completed",
-                                taskId = taskId,
-                                fileName = fileName,
-                                progress = 100,
-                                status = "completed",
-                                message = "货位导入完成"
-                            )
-                        )
-                    }
-
-                    IM_POSITION_USERS_HEADERS -> {
-                        TODO()
-                    }
-
-                    CUSTOMER_HEADERS -> {
-                        //导入前 清除该类型的数据
-                        imImportResultRepository.deleteByType("单位")
-                        //职员角色表导入
-                        if (oraclePackageService.importCustomer(organId) == 1) {
-                            return false
-                        }
-                        updateTaskStatus(taskId, "completed", 100, "单位导入完成")
-                        webSocketHandler.sendToSession(
-                            sessionId, ProgressData(
-                                type = "completed",
-                                taskId = taskId,
-                                fileName = fileName,
-                                progress = 100,
-                                status = "completed",
-                                message = "单位导入完成"
-                            )
-                        )
-                    }
-
-                    ITEM_HEADERS -> {
-                        TODO()
-                    }
-
-                    ITEM_NATURE_ACCOUNT_HEADERS -> {
-                        TODO()
-                    }
-
-                    IM_COST_ITEM_ACCOUNT_HEADERS -> {
-                        TODO()
-                    }
-
-                    IM_STOCK_INIT_HEADERS -> {
-                        TODO()
-                    }
-
-                    SELL_BILL_HEADERS -> {
-                        TODO()
-                    }
-
-                    null -> {
-                        TODO()
-                    }
-                }
+//                when (matchedHeaderType) {
+//                    DEPARTMENT_HEADERS -> {
+//                        //导入前 清除该类型的数据
+//                        imImportResultRepository.deleteByType("部门")
+//                        //部门 导入检查
+//                        if (oraclePackageService.importDepartment(organId) == 1) {
+//                            throw ImportDataException("部门 数据处理失败")
+//                        }
+//                        updateTaskStatus(taskId, "completed", 100, "部门导入完成")
+//                        webSocketHandler.sendToSession(
+//                            sessionId, ProgressData(
+//                                type = "completed",
+//                                taskId = taskId,
+//                                fileName = fileName,
+//                                progress = 100,
+//                                status = "completed",
+//                                message = "部门导入完成"
+//                            )
+//                        )
+//                    }
+//
+//                    DEPARTMENT_TYPE_HEADERS -> {
+//                        //导入前 清除该类型的数据
+//                        imImportResultRepository.deleteByType("部门类型")
+//                        //部门 类型导入
+//                        if (oraclePackageService.importDepartmentType() == 1) {
+//                            throw ImportDataException("部门类型数据处理失败")
+//                        }
+//                        println("部门类型导入检查")
+//                        updateTaskStatus(taskId, "completed", 100, "部门类型导入完成")
+//                        webSocketHandler.sendToSession(
+//                            sessionId, ProgressData(
+//                                type = "completed",
+//                                taskId = taskId,
+//                                fileName = fileName,
+//                                progress = 100,
+//                                status = "completed",
+//                                message = "部门类型导入完成"
+//                            )
+//                        )
+//                    }
+//
+//                    USER_HEADERS -> {
+//                        //导入前 清除该类型的数据
+//                        imImportResultRepository.deleteByType("职员")
+//                        //职员导入
+//                        if (oraclePackageService.importUser(organId) == 1) {
+//                            throw ImportDataException("职员数据处理失败")
+//                        }
+//                        updateTaskStatus(taskId, "completed", 100, "职员导入完成")
+//                        webSocketHandler.sendToSession(
+//                            sessionId, ProgressData(
+//                                type = "completed",
+//                                taskId = taskId,
+//                                fileName = fileName,
+//                                progress = 100,
+//                                status = "completed",
+//                                message = "职员导入完成"
+//                            )
+//                        )
+//                    }
+//
+//                    ROLE_HEADERS -> {
+//                        //导入前 清除该类型的数据
+//                        imImportResultRepository.deleteByType("角色")
+//                        //系统角色表导入
+//                        if (oraclePackageService.importRole(organId) == 1) {
+//                            throw ImportDataException("角色数据处理失败")
+//                        }
+//                        updateTaskStatus(taskId, "completed", 100, "系统角色导入完成")
+//                        webSocketHandler.sendToSession(
+//                            sessionId, ProgressData(
+//                                type = "completed",
+//                                taskId = taskId,
+//                                fileName = fileName,
+//                                progress = 100,
+//                                status = "completed",
+//                                message = "系统角色导入完成"
+//                            )
+//                        )
+//                    }
+//
+//                    USER_ROLE_HEADERS -> {
+//                        //导入前 清除该类型的数据
+//                        imImportResultRepository.deleteByType("职员角色")
+//                        //职员角色表导入
+//                        if (oraclePackageService.importUserRole(organId) == 1) {
+//                            throw ImportDataException("职员角色数据处理失败")
+//                        }
+//                        updateTaskStatus(taskId, "completed", 100, "职员角色导入完成")
+//                        webSocketHandler.sendToSession(
+//                            sessionId, ProgressData(
+//                                type = "completed",
+//                                taskId = taskId,
+//                                fileName = fileName,
+//                                progress = 100,
+//                                status = "completed",
+//                                message = "职员角色导入完成"
+//                            )
+//                        )
+//                    }
+//
+//                    POSITION_HEADERS -> {
+//                        //导入前 清除该类型的数据
+//                        imImportResultRepository.deleteByType("货位")
+//                        //职员角色表导入
+//                        if (oraclePackageService.importPosition(organId) == 1) {
+//                            throw ImportDataException("货位数据处理失败")
+//                        }
+//                        updateTaskStatus(taskId, "completed", 100, "货位导入完成")
+//                        webSocketHandler.sendToSession(
+//                            sessionId, ProgressData(
+//                                type = "completed",
+//                                taskId = taskId,
+//                                fileName = fileName,
+//                                progress = 100,
+//                                status = "completed",
+//                                message = "货位导入完成"
+//                            )
+//                        )
+//                    }
+//
+//                    IM_POSITION_USERS_HEADERS -> {
+//
+//                    }
+//
+//                    CUSTOMER_HEADERS -> {
+//                        //导入前 清除该类型的数据
+//                        imImportResultRepository.deleteByType("单位")
+//                        //职员角色表导入
+//                        if (oraclePackageService.importCustomer(organId) == 1) {
+//                            throw ImportDataException("单位数据处理失败")
+//                        }
+//                        updateTaskStatus(taskId, "completed", 100, "单位导入完成")
+//                        webSocketHandler.sendToSession(
+//                            sessionId, ProgressData(
+//                                type = "completed",
+//                                taskId = taskId,
+//                                fileName = fileName,
+//                                progress = 100,
+//                                status = "completed",
+//                                message = "单位导入完成"
+//                            )
+//                        )
+//                    }
+//
+//                    ITEM_HEADERS -> {
+//                    }
+//
+//                    ITEM_NATURE_ACCOUNT_HEADERS -> {
+//
+//                    }
+//
+//                    IM_COST_ITEM_ACCOUNT_HEADERS -> {
+//
+//                    }
+//
+//                    IM_STOCK_INIT_HEADERS -> {
+//
+//                    }
+//
+//                    SELL_BILL_HEADERS -> {
+//
+//                    }
+//
+//                    null -> {
+//
+//                    }
+//
+//                    OTHERS_SKIP_HEADERS -> continue
+//                }
             }
             //关闭
             workbook.close()
 
-
-
-
+            // 发送完成通知
+            val completeMessage = "文件处理完成"
+            webSocketHandler.sendToSession(
+                sessionId, ProgressData(
+                    type = "completed",
+                    taskId = taskId,
+                    fileName = fileName,
+                    progress = 100,
+                    status = "completed",
+                    message = completeMessage
+                )
+            )
+            updateTaskStatus(taskId, "completed", 100, completeMessage)
+            logger.info("文件处理完成: $fileName (taskId: $taskId)")
 
             return true
-        } catch (e: NoSuchFileException) {
-            logger.error(e.message)
-            logger.error(e.reason)
-            println(e.message)
-            println(e.reason)
+        } catch (e: Exception) {
+            logger.error("处理文件失败: ${e.message}", e)
+            println("处理文件失败: ${e.message}")
+
+            // 发送错误通知
             webSocketHandler.sendToSession(
                 sessionId, ProgressData(
                     type = "error",
                     taskId = taskId,
                     fileName = fileName,
-                    progress = 95,
+                    progress = 100,
                     status = "error",
-                    message = "后台出错"
+                    message = when (e) {
+                        is NoSuchFileException -> "文件不存在或无法访问: ${e.message}"
+                        is DataIntegrityViolationException -> "调用存储过程失败: ${e.message}"
+                        else -> "未知错误: ${e.message}"
+                    }
                 )
             )
+            // 更新任务状态
+            updateTaskStatus(taskId, "error", 0, "处理失败: ${e.message}")
+            throw e
         }
 
-        // 最后的数据保存
-        val saveMessage = "表格数据导入完成, 请等待最终导入...(数据量越大等待时间越长,请勿关闭窗口)"
-        updateTaskStatus(taskId, "processing", 95, saveMessage)
-        webSocketHandler.sendToSession(
-            sessionId, ProgressData(
-                type = "processing",
-                taskId = taskId,
-                fileName = fileName,
-                progress = 95,
-                status = "processing",
-                message = saveMessage
-            )
-        )
-        return true
-    }
 
-    /**
-     * 安全地获取单元格中的数据，并将其统一转换为 String 类型。
-     * 数字在转换为字符串时，如果为整数（如 123.0），将转换为不带小数点的形式（如 "123"）。
-     *
-     * @param cell 要获取数据的单元格对象，可能为 null。
-     * @param evaluator FormulaEvaluator 实例，用于评估公式单元格。
-     * @return 单元格数据的 String 表示。如果单元格为 null 或空白，返回空字符串。
-     */
-    fun getCellValueAsString(cell: Cell?, evaluator: FormulaEvaluator): String {
-        if (cell == null) {
-            return "" // 如果单元格本身是 null，返回空字符串
-        }
-
-        return when (cell.cellType) {
-            CellType.STRING -> cell.stringCellValue.trim() // 字符串类型
-            CellType.NUMERIC -> {
-                // 数字类型可能表示数字或日期
-                if (DateUtil.isCellDateFormatted(cell)) {
-                    // 如果是日期格式的数字，获取日期值
-                    cell.dateCellValue.toString() // 或者格式化为特定日期字符串
-                } else {
-                    // 普通数字
-                    val numericValue = cell.numericCellValue
-                    // 判断是否为整数，并进行转换
-                    if (numericValue % 1.0 == 0.0) { // 如果数字的浮点部分为 0
-                        numericValue.toLong().toString() // 转换为 Long 再转 String
-                    } else {
-                        numericValue.toString() // 否则保持浮点数形式
-                    }
-                }
-            }
-
-            CellType.BOOLEAN -> cell.booleanCellValue.toString() // 布尔类型
-            CellType.FORMULA -> {
-                try {
-                    val cellValue = evaluator.evaluate(cell)
-                    when (cellValue.cellType) {
-                        CellType.STRING -> cellValue.stringValue.trim()
-                        CellType.NUMERIC -> {
-                            if (DateUtil.isCellDateFormatted(cell)) { // 公式结果也可能是日期
-                                DateUtil.getJavaDate(cellValue.numberValue).toString()
-                            } else {
-                                val numericValue = cellValue.numberValue
-                                // 判断是否为整数，并进行转换
-                                if (numericValue % 1.0 == 0.0) { // 如果数字的浮点部分为 0
-                                    numericValue.toLong().toString() // 转换为 Long 再转 String
-                                } else {
-                                    numericValue.toString() // 否则保持浮点数形式
-                                }
-                            }
-                        }
-
-                        CellType.BOOLEAN -> cellValue.booleanValue.toString()
-                        CellType.ERROR -> "#ERROR!" // 公式错误
-                        else -> "" // 其他未知类型
-                    }
-                } catch (e: Exception) {
-                    // 捕获公式评估中的任何异常，例如公式无效
-                    logger.error(e.message)
-                    println("警告: 评估公式时出错 ${cell.address.formatAsString()}: ${e.message}")
-                    "#FORMULA_ERROR!"
-                }
-            }
-
-            CellType.BLANK -> "" // 空白单元格
-            CellType.ERROR -> "#ERROR!" // 错误单元格
-            else -> "" // 其他未知类型
-        }
     }
 
 
@@ -1434,7 +1343,6 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "仓库编码", "仓库名称", "仓库说明", "仓库运营方", "仓库类型", "仓库收书地址及联系方式"
         )
     ),
-
     IM_POSITION_USERS_HEADERS(
         listOf(
             "职员编码",
@@ -1569,8 +1477,6 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "结存金额"
         )
     ),
-
-
     SELL_BILL_HEADERS(
         listOf(
             "销售订单号",
@@ -1608,6 +1514,11 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "批次的首次入库日期"
         )
     ),
+    OTHERS_SKIP_HEADERS(
+        listOf(
+            "用户属性", "查询权限"
+        )
+    )
 }
 
 /**

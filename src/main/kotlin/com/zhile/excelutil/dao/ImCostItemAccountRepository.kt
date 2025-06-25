@@ -14,6 +14,7 @@ import org.springframework.stereotype.Repository
  */
 @Repository
 interface ImCostItemAccountRepository : CrudRepository<ImCostItemAccount, Long> {
+
     @Modifying
     @Query(
         """
@@ -56,4 +57,12 @@ interface ImCostItemAccountRepository : CrudRepository<ImCostItemAccount, Long> 
         @Param("costItemId") costItemId: Long?
     ) {
     }
+
+    @Modifying
+    @Query(
+        """
+            DELETE FROM IM_COST_ITEM_ACCOUNT
+        """
+    )
+    fun deleteAllImCostItemAccount()
 }

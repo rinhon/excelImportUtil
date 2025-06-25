@@ -45,4 +45,12 @@ interface ImStockInitRepository : CrudRepository<ImStockInit, Long> {
         @Param("billId") billId: Long?
     ) {
     }
+
+    @Modifying
+    @Query(
+        """
+            DELETE FROM IM_STOCK_INIT
+        """
+    )
+    fun deleteAllImStockInit()
 }

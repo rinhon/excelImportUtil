@@ -17,7 +17,7 @@ interface ImImportResultRepository : CrudRepository<ImImportResult, Long> {
     @Modifying
     @Query(
         """
-            DELETE FROM SPMG_ERP_UAT.IM_IMPORT_RESULT
+            DELETE FROM IM_IMPORT_RESULT
             WHERE F_CHECK_TYPE = :type
         """
     )

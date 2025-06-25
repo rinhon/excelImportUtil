@@ -34,4 +34,12 @@ interface ImDepartmentRepository : CrudRepository<ImDepartment, Long> {
         @Param("typeId") typeId: Long?
     ) {
     }
+
+    @Modifying
+    @Query(
+        """
+              DELETE FROM IM_DEPARTMENT_TYPE
+        """
+    )
+    fun deleteAllImDepartment()
 }

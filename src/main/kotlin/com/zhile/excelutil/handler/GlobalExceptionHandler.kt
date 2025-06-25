@@ -81,9 +81,9 @@ class GlobalExceptionHandler {
      */
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidationExceptions(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
-        val errors = ex.bindingResult.fieldErrors.map { error ->
+        val errors = ex.bindingResult.fieldErrors.joinToString(", ") { error ->
             "${error.field}: ${error.defaultMessage}"
-        }.joinToString(", ")
+        }
 
         logger.warn("捕获到参数校验失败异常: $errors")
         val errorResponse = ErrorResponse(
