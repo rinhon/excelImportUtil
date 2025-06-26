@@ -43,7 +43,7 @@ data class ImUser(
     @Column("F_ATTRIBUTE")
     var attribute: String? = null,
     //部门Id
-    @Column("F_PERMIT")
-    var permit: String? = null,
+    @Column("F_QUERY_RIGHT")
+    var queryRight: String? = null,
 
     )

@@ -15,10 +15,10 @@ interface ImUserRepository : CrudRepository<ImUser, Long> {
         """
         INSERT INTO IM_USER (
             F_CODE, F_NAME, F_PHONE, F_DEPARTMENT_CODE, 
-            F_DEPARTMENT_NAME, F_SEX, F_REMARKS,F_LOGIN,F_ATTRIBUTE,F_PERMIT, F_ID, F_DEPARTMENT_ID
+            F_DEPARTMENT_NAME, F_SEX, F_REMARKS,F_LOGIN,F_ATTRIBUTE,F_QUERY_RIGHT, F_ID, F_DEPARTMENT_ID
         ) VALUES  (
             :code, :name, :phone, :departmentCode, 
-            :departmentName, :sex, :remarks,:login,:attribute,:permit, :id, :departmentId
+            :departmentName, :sex, :remarks,:login,:attribute,:queryRight, :id, :departmentId
         )
     """
     )
@@ -32,7 +32,7 @@ interface ImUserRepository : CrudRepository<ImUser, Long> {
         @Param("remarks") remarks: String?,
         @Param("login") login: String?,
         @Param("attribute") attribute: String?,
-        @Param("permit") permit: String?,
+        @Param("queryRight") queryRight: String?,
         @Param("id") id: Long?,
         @Param("departmentId") departmentId: Long?
     ) {

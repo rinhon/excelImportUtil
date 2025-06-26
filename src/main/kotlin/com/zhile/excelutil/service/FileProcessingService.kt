@@ -8,7 +8,6 @@ import com.zhile.excelutil.service.ExcelHeaderData.*
 import com.zhile.excelutil.utils.ExcelDealUtils
 import com.zhile.excelutil.utils.FileUtils
 import kotlinx.coroutines.*
-import org.apache.poi.ss.usermodel.CellType
 import org.apache.poi.ss.usermodel.FormulaEvaluator
 import org.apache.poi.ss.usermodel.Row
 import org.apache.poi.ss.usermodel.WorkbookFactory
@@ -356,7 +355,7 @@ class FileProcessingService(
                 var headerMatch: Pair<ExcelHeaderData?, Map<String, Int>>?
                 findSheetHeader@ for (i in 0 until maxHeaderCheckRows) {
                     val row = sheet.getRow(i)
-                    headerMatch = isValidExcelHeaderRow(row, evaluator)
+                    headerMatch = excelDealUtils.isValidExcelHeaderRow(row, evaluator)
                     if (headerMatch != null) {
                         matchedHeaderInfo = headerMatch
                         headerRowIndex = i
@@ -364,7 +363,6 @@ class FileProcessingService(
                         break@findSheetHeader // 找到头部后，停止检测
                     }
                 }
-                val number = i + 1;
                 // 如果没有找到匹配的头部，则认为文件格式不符
                 if (matchedHeaderInfo == null) {
 //                    webSocketHandler.sendToSession(
@@ -386,8 +384,8 @@ class FileProcessingService(
                 val dataStartRowIndex = headerRowIndex + 1
                 //根据表头先清空对应的中间表
                 when (matchedHeaderType) {
-                    DEPARTMENT_HEADERS -> imDepartmentTypeRepository.deleteAllDepartment()
-                    DEPARTMENT_TYPE_HEADERS -> imDepartmentRepository.deleteAllImDepartment()
+                    DEPARTMENT_HEADERS -> imDepartmentRepository.deleteAllImDepartment()
+                    DEPARTMENT_TYPE_HEADERS -> imDepartmentTypeRepository.deleteAllDepartmentType()
                     USER_HEADERS -> imUserRepository.deleteAllImUser()
                     ROLE_HEADERS -> imRoleRepository.deleteAllImRole()
                     USER_ROLE_HEADERS -> imUserRoleRepository.deleteAllImUserRole()
@@ -422,602 +420,635 @@ class FileProcessingService(
                     if (!hasData) {
                         continue@dealData // 跳过没有任何数据的行
                     }
-                    when (matchedHeaderType) {
-                        // 1.1部门 类型中间表-->部门设置表-工作簿2  XXXX字段对不上
-                        DEPARTMENT_TYPE_HEADERS -> {
-                            val imDepartmentType = ImDepartmentType()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "部门类型" -> imDepartmentType.name = cellValue
-                                    "备注" -> imDepartmentType.remarks = cellValue
+                    try {
+                        // 记录开始处理的行号
+                        logger.debug("开始处理第 ${i + 1} 行数据")
+                        when (matchedHeaderType) {
+                            // 1.1部门 类型中间表-->部门设置表-工作簿2  XXXX字段对不上
+                            DEPARTMENT_TYPE_HEADERS -> {
+                                val imDepartmentType = ImDepartmentType()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "" -> imDepartmentType.seq = cellValue
+                                        "部门类型" -> imDepartmentType.name = cellValue
+                                        "备注" -> imDepartmentType.remarks = cellValue
+                                    }
                                 }
+                                imDepartmentTypeRepository.insertDepartmentType(
+                                    seq = imDepartmentType.seq,
+                                    name = imDepartmentType.name,
+                                    remarks = imDepartmentType.remarks,
+                                    id = null,
+                                    code = null
+                                )
                             }
-                            imDepartmentTypeRepository.insertDepartmentType(
-                                name = imDepartmentType.name,
-                                remarks = imDepartmentType.remarks,
-                                id = null,
-                                code = null
-                            )
-                        }
-                        // 1.2部门 数据中间表-->部门设置表-工作簿1  √√√√
-                        DEPARTMENT_HEADERS -> {
-                            val imDepartment = ImDepartment()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "本级编码", "部门编码" -> imDepartment.code = cellValue
-                                    "层级", "部门名称" -> imDepartment.name = cellValue
-                                    "全称" -> imDepartment.fullName = cellValue
-                                    "父级编码" -> imDepartment.parentCode = cellValue
-                                    "父级名称" -> imDepartment.parentName = cellValue
-                                    "行政级别", "部门类型" -> imDepartment.departmentType = cellValue
-                                    "省份", "备注" -> imDepartment.remarks = cellValue
+                            // 1.2部门 数据中间表-->部门设置表-工作簿1  √√√√
+                            DEPARTMENT_HEADERS -> {
+                                val imDepartment = ImDepartment()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "本级编码", "部门编码" -> imDepartment.code = cellValue
+                                        "层级", "部门名称" -> imDepartment.name = cellValue
+                                        "全称" -> imDepartment.fullName = cellValue
+                                        "父级编码" -> imDepartment.parentCode = cellValue
+                                        "父级名称" -> imDepartment.parentName = cellValue
+                                        "行政级别", "部门类型" -> imDepartment.departmentType = cellValue
+                                        "省份", "备注" -> imDepartment.remarks = cellValue
+                                    }
                                 }
+                                imDepartmentRepository.insertDepartment(
+                                    code = imDepartment.code,
+                                    name = imDepartment.name,
+                                    fullName = imDepartment.fullName,
+                                    parentCode = imDepartment.parentCode,
+                                    parentName = imDepartment.parentName,
+                                    departmentType = imDepartment.departmentType,
+                                    remarks = imDepartment.remarks,
+                                    parentId = null,
+                                    typeId = null
+                                )
                             }
-                            imDepartmentRepository.insertDepartment(
-                                code = imDepartment.code,
-                                name = imDepartment.name,
-                                fullName = imDepartment.fullName,
-                                parentCode = imDepartment.parentCode,
-                                parentName = imDepartment.parentName,
-                                departmentType = imDepartment.departmentType,
-                                remarks = imDepartment.remarks,
-                                parentId = null,
-                                typeId = null
-                            )
-                        }
-                        // 2.职员数据中间表-->职员设置表-工作簿1  √√√√√√ 缺少 用户属性 查询权限
-                        USER_HEADERS -> {
-                            val imUser = ImUser()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "职员名称" -> imUser.name = cellValue
-                                    "职员编码" -> imUser.code = cellValue
-                                    "手机号码" -> imUser.phone = cellValue
-                                    "所属部门编码" -> imUser.departmentCode = cellValue
-                                    "所属部门名称" -> imUser.departmentName = cellValue
-                                    "性别" -> imUser.sex = cellValue
-                                    "能否登录系统" -> imUser.login = cellValue
-                                    "备注" -> imUser.remarks = cellValue
-                                    "用户属性" -> imUser.attribute = cellValue
-                                    "查询权限" -> imUser.permit = cellValue
+                            // 2.职员数据中间表-->职员设置表-工作簿1  √√√√√√ 缺少 用户属性 查询权限
+                            USER_HEADERS -> {
+                                val imUser = ImUser()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "职员名称" -> imUser.name = cellValue
+                                        "职员编码" -> imUser.code = cellValue
+                                        "手机号码" -> imUser.phone = cellValue
+                                        "所属部门编码" -> imUser.departmentCode = cellValue
+                                        "所属部门名称" -> imUser.departmentName = cellValue
+                                        "性别" -> imUser.sex = cellValue
+                                        "能否登录系统" -> imUser.login = cellValue
+                                        "备注" -> imUser.remarks = cellValue
+                                        "用户属性" -> imUser.attribute = cellValue
+                                        "查询权限" -> imUser.queryRight = cellValue
+                                    }
                                 }
+                                imUserRepository.insertUser(
+                                    code = imUser.code,
+                                    name = imUser.name,
+                                    phone = imUser.phone,
+                                    departmentCode = imUser.departmentCode,
+                                    departmentName = imUser.departmentName,
+                                    sex = imUser.sex,
+                                    remarks = imUser.remarks,
+                                    login = imUser.login,
+                                    attribute = imUser.attribute,
+                                    queryRight = imUser.queryRight,
+                                    id = null,
+                                    departmentId = null
+                                )
                             }
-                            imUserRepository.insertUser(
-                                code = imUser.code,
-                                name = imUser.name,
-                                phone = imUser.phone,
-                                departmentCode = imUser.departmentCode,
-                                departmentName = imUser.departmentName,
-                                sex = imUser.sex,
-                                remarks = imUser.remarks,
-                                login = imUser.login,
-                                attribute = imUser.attribute,
-                                permit = imUser.permit,
-                                id = null,
-                                departmentId = null
-                            )
-                        }
-                        //3.1 角色数据中间表-->职员角色设置表-工作簿2  √√√√√√
-                        ROLE_HEADERS -> {
-                            val imUser = ImRole()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "角色名称" -> imUser.name = cellValue
-                                    "角色编码" -> imUser.code = cellValue
+                            //3.1 角色数据中间表-->职员角色设置表-工作簿2  √√√√√√
+                            ROLE_HEADERS -> {
+                                val imUser = ImRole()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "角色名称" -> imUser.name = cellValue
+                                        "角色编码" -> imUser.code = cellValue
+                                    }
                                 }
+                                imRoleRepository.insertRole(
+                                    code = imUser.code,
+                                    name = imUser.name,
+                                    id = null,
+                                )
                             }
-                            imRoleRepository.insertRole(
-                                code = imUser.code,
-                                name = imUser.name,
-                                id = null,
-                            )
-                        }
-                        // 3.2 职员角色中间表-->职员角色设置表-工作簿1  √√√√√√
-                        USER_ROLE_HEADERS -> {
-                            val imUserRole = ImUserRole()
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "职员编码" -> imUserRole.userCode = cellValue
-                                    "职员名称" -> imUserRole.userName = cellValue
-                                    "角色编码" -> imUserRole.roleCode = cellValue
-                                    "角色名称" -> imUserRole.roleName = cellValue
+                            // 3.2 职员角色中间表-->职员角色设置表-工作簿1  √√√√√√
+                            USER_ROLE_HEADERS -> {
+                                val imUserRole = ImUserRole()
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "职员编码" -> imUserRole.userCode = cellValue
+                                        "职员名称" -> imUserRole.userName = cellValue
+                                        "角色编码" -> imUserRole.roleCode = cellValue
+                                        "角色名称" -> imUserRole.roleName = cellValue
+                                    }
                                 }
+                                imUserRoleRepository.insertUserRole(
+                                    userCode = imUserRole.userCode,
+                                    userName = imUserRole.userName,
+                                    roleCode = imUserRole.roleCode,
+                                    roleName = imUserRole.roleName,
+                                    userId = null,
+                                    roleId = null
+                                )
                             }
-                            imUserRoleRepository.insertUserRole(
-                                userCode = imUserRole.userCode,
-                                userName = imUserRole.userName,
-                                roleCode = imUserRole.roleCode,
-                                roleName = imUserRole.roleName,
-                                userId = null,
-                                roleId = null
-                            )
-                        }
-                        // 4.货位中间表-->业务员、仓库人员分配-工作簿1  √√√√√√
-                        POSITION_HEADERS -> {
-                            val imPosition = ImPosition()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "仓库编码" -> imPosition.code = cellValue
-                                    "仓库名称" -> imPosition.name = cellValue
-                                    "仓库说明" -> imPosition.remarks = cellValue
-                                    "仓库运营方" -> imPosition.manager = cellValue
-                                    "仓库类型" -> imPosition.type = cellValue
-                                    "仓库收书地址及联系方式" -> imPosition.address = cellValue
+                            // 4.货位中间表-->业务员、仓库人员分配-工作簿1  √√√√√√
+                            POSITION_HEADERS -> {
+                                val imPosition = ImPosition()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "仓库编码" -> imPosition.code = cellValue
+                                        "仓库名称" -> imPosition.name = cellValue
+                                        "仓库说明" -> imPosition.remarks = cellValue
+                                        "仓库运营方" -> imPosition.manager = cellValue
+                                        "仓库类型" -> imPosition.type = cellValue
+                                        "仓库收书地址及联系方式" -> imPosition.address = cellValue
+                                    }
                                 }
+                                imPositionRepository.insertPosition(
+                                    code = imPosition.code,
+                                    name = imPosition.name,
+                                    remarks = imPosition.remarks,
+                                    manager = imPosition.manager,
+                                    type = imPosition.type,
+                                    address = imPosition.address,
+                                    id = null
+                                )
                             }
-                            imPositionRepository.insertPosition(
-                                code = imPosition.code,
-                                name = imPosition.name,
-                                remarks = imPosition.remarks,
-                                manager = imPosition.manager,
-                                type = imPosition.type,
-                                address = imPosition.address,
-                                id = null
-                            )
-                        }
-                        // 4.1 仓库人员分配中间表-->业务员、仓库人员分配-工作簿2  √√√√√√
-                        IM_POSITION_USERS_HEADERS -> {
-                            val imPositionUser = ImPositionUser()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "职员编码" -> imPositionUser.userCode = cellValue
-                                    "职员姓名" -> imPositionUser.userName = cellValue
-                                    "仓库编码" -> imPositionUser.positionCode = cellValue
-                                    "仓库名称" -> imPositionUser.positionName = cellValue
+                            // 4.1 仓库人员分配中间表-->业务员、仓库人员分配-工作簿2  √√√√√√
+                            IM_POSITION_USERS_HEADERS -> {
+                                val imPositionUser = ImPositionUser()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "职员编码" -> imPositionUser.userCode = cellValue
+                                        "职员姓名" -> imPositionUser.userName = cellValue
+                                        "仓库编码" -> imPositionUser.positionCode = cellValue
+                                        "仓库名称" -> imPositionUser.positionName = cellValue
+                                    }
                                 }
+                                imPositionUserRepository.insertPositionUser(
+                                    userCode = imPositionUser.userCode,
+                                    userName = imPositionUser.userName,
+                                    positionCode = imPositionUser.positionCode,
+                                    positionName = imPositionUser.positionName,
+                                    userId = null,
+                                    positionId = null
+                                )
                             }
-                            imPositionUserRepository.insertPositionUser(
-                                userCode = imPositionUser.userCode,
-                                userName = imPositionUser.userName,
-                                positionCode = imPositionUser.positionCode,
-                                positionName = imPositionUser.positionName,
-                                userId = null,
-                                positionId = null
-                            )
-                        }
-                        // 5.往来单位中间表-->往来单位档案 √√√√
-                        CUSTOMER_HEADERS -> {
-                            val imCustomer = ImCustomer()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "单位/个人编码" -> imCustomer.code = cellValue
-                                    "单位/个人名称" -> imCustomer.name = cellValue
-                                    "单位/个人简称" -> imCustomer.abbr = cellValue
-                                    "单位分类" -> imCustomer.catalog = cellValue
-                                    "朝代" -> imCustomer.dynasty = cellValue
-                                    "是否内部单位" -> imCustomer.inUnit = cellValue
-                                    "单位性质1" -> imCustomer.nature1 = cellValue
-                                    "单位性质2" -> imCustomer.nature2 = cellValue
-                                    "单位类型" -> imCustomer.customerType = cellValue
-                                    "所属地区" -> imCustomer.area = cellValue
-                                    "证件类型" -> imCustomer.cardType = cellValue
-                                    "证件号码" -> imCustomer.cardNo = cellValue
-                                    "函证联系人" -> imCustomer.correspondenceContact = cellValue
-                                    "函证人电话" -> imCustomer.correspondenceTel = cellValue
-                                    "函证地址" -> imCustomer.correspondenceAddress = cellValue
-                                    "账户名称" -> imCustomer.accountName = cellValue
-                                    "银行账户" -> imCustomer.accountNo = cellValue
-                                    "开户行" -> imCustomer.bankName = cellValue
+                            // 5.往来单位中间表-->往来单位档案 √√√√
+                            CUSTOMER_HEADERS -> {
+                                val imCustomer = ImCustomer()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "单位/个人编码" -> imCustomer.code = cellValue
+                                        "单位/个人名称" -> imCustomer.name = cellValue
+                                        "单位/个人简称" -> imCustomer.abbr = cellValue
+                                        "单位分类" -> imCustomer.catalog = cellValue
+                                        "朝代" -> imCustomer.dynasty = cellValue
+                                        "是否内部单位" -> imCustomer.inUnit = cellValue
+                                        "单位性质1" -> imCustomer.nature1 = cellValue
+                                        "单位性质2" -> imCustomer.nature2 = cellValue
+                                        "单位类型" -> imCustomer.customerType = cellValue
+                                        "所属地区" -> imCustomer.area = cellValue
+                                        "证件类型" -> imCustomer.cardType = cellValue
+                                        "证件号码" -> imCustomer.cardNo = cellValue
+                                        "函证联系人" -> imCustomer.correspondenceContact = cellValue
+                                        "函证人电话" -> imCustomer.correspondenceTel = cellValue
+                                        "函证地址" -> imCustomer.correspondenceAddress = cellValue
+                                        "账户名称" -> imCustomer.accountName = cellValue
+                                        "银行账户" -> imCustomer.accountNo = cellValue
+                                        "开户行" -> imCustomer.bankName = cellValue
+                                    }
                                 }
+                                imCustomerRepository.insertCustomer(
+                                    code = imCustomer.code,
+                                    name = imCustomer.name,
+                                    abbr = imCustomer.abbr,
+                                    catalog = imCustomer.catalog,
+                                    dynasty = imCustomer.dynasty,
+                                    inUnit = imCustomer.inUnit,
+                                    nature1 = imCustomer.nature1,
+                                    nature2 = imCustomer.nature2,
+                                    customerType = imCustomer.customerType,
+                                    area = imCustomer.area,
+                                    cardType = imCustomer.cardType,
+                                    cardNo = imCustomer.cardNo,
+                                    correspondenceContact = imCustomer.correspondenceContact,
+                                    correspondenceTel = imCustomer.correspondenceTel,
+                                    correspondenceAddress = imCustomer.correspondenceAddress,
+                                    accountName = imCustomer.accountName,
+                                    accountNo = imCustomer.accountNo,
+                                    bankName = imCustomer.bankName,
+                                    id = null,
+                                    topBankId = null,
+                                    areaId = null,
+                                    customerTypeId = null,
+                                    cardTypeId = null
+                                )
                             }
-                            imCustomerRepository.insertCustomer(
-                                code = imCustomer.code,
-                                name = imCustomer.name,
-                                abbr = imCustomer.abbr,
-                                catalog = imCustomer.catalog,
-                                dynasty = imCustomer.dynasty,
-                                inUnit = imCustomer.inUnit,
-                                nature1 = imCustomer.nature1,
-                                nature2 = imCustomer.nature2,
-                                customerType = imCustomer.customerType,
-                                area = imCustomer.area,
-                                cardType = imCustomer.cardType,
-                                cardNo = imCustomer.cardNo,
-                                correspondenceContact = imCustomer.correspondenceContact,
-                                correspondenceTel = imCustomer.correspondenceTel,
-                                correspondenceAddress = imCustomer.correspondenceAddress,
-                                accountName = imCustomer.accountName,
-                                accountNo = imCustomer.accountNo,
-                                bankName = imCustomer.bankName,
-                                id = null,
-                                topBankId = null,
-                                areaId = null,
-                                customerTypeId = null,
-                                cardTypeId = null
-                            )
-                        }
-                        // 5.往来单位中间表->往来单位 业务员
-                        CUSTOMER_BUSINESS_SET_HEADERS -> {
-                            val imCustomerBusinessSet = ImCustomerBusinessSet()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "往来单位编码" -> imCustomerBusinessSet.customerCode = cellValue
-                                    "往来单位名称" -> imCustomerBusinessSet.customerName = cellValue
-                                    "采购员编码" -> imCustomerBusinessSet.purchaseUserCode = cellValue
-                                    "采购员" -> imCustomerBusinessSet.purchaseUserName = cellValue
-                                    "采购部门编码" -> imCustomerBusinessSet.purchaseDepartmentCode = cellValue
-                                    "采购部门名称" -> imCustomerBusinessSet.purchaseDepartmentName = cellValue
-                                    "销售员编码" -> imCustomerBusinessSet.saleUserCode = cellValue
-                                    "销售员" -> imCustomerBusinessSet.saleUserName = cellValue
-                                    "销售部门编码" -> imCustomerBusinessSet.saleDepartmentCode = cellValue
-                                    "销售部门名称" -> imCustomerBusinessSet.saleDepartmentName = cellValue
-                                    "备注" -> imCustomerBusinessSet.remarks = cellValue
+                            // 5.往来单位中间表->往来单位 业务员
+                            CUSTOMER_BUSINESS_SET_HEADERS -> {
+                                val imCustomerBusinessSet = ImCustomerBusinessSet()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "往来单位编码" -> imCustomerBusinessSet.customerCode = cellValue
+                                        "往来单位名称" -> imCustomerBusinessSet.customerName = cellValue
+                                        "采购员编码" -> imCustomerBusinessSet.purchaseUserCode = cellValue
+                                        "采购员" -> imCustomerBusinessSet.purchaseUserName = cellValue
+                                        "采购部门编码" -> imCustomerBusinessSet.purchaseDepartmentCode = cellValue
+                                        "采购部门名称" -> imCustomerBusinessSet.purchaseDepartmentName = cellValue
+                                        "销售员编码" -> imCustomerBusinessSet.saleUserCode = cellValue
+                                        "销售员" -> imCustomerBusinessSet.saleUserName = cellValue
+                                        "销售部门编码" -> imCustomerBusinessSet.saleDepartmentCode = cellValue
+                                        "销售部门名称" -> imCustomerBusinessSet.saleDepartmentName = cellValue
+                                        "备注" -> imCustomerBusinessSet.remarks = cellValue
+                                    }
                                 }
+                                imCustomerBusinessSetRepository.insertCustomerInfo(
+                                    customerCode = imCustomerBusinessSet.customerCode,
+                                    customerName = imCustomerBusinessSet.customerName,
+                                    purchaseUserCode = imCustomerBusinessSet.purchaseUserCode,
+                                    purchaseUserName = imCustomerBusinessSet.purchaseUserName,
+                                    purchaseDepartmentCode = imCustomerBusinessSet.purchaseDepartmentCode,
+                                    purchaseDepartmentName = imCustomerBusinessSet.purchaseDepartmentName,
+                                    saleUserCode = imCustomerBusinessSet.saleUserCode,
+                                    saleUserName = imCustomerBusinessSet.saleUserName,
+                                    saleDepartmentCode = imCustomerBusinessSet.saleDepartmentCode,
+                                    saleDepartmentName = imCustomerBusinessSet.saleDepartmentName,
+                                    remarks = imCustomerBusinessSet.remarks,
+                                    customerId = null,
+                                    purchaseUserId = null,
+                                    purchaseDepartmentId = null,
+                                    saleUserId = null,
+                                    saleDepartmentId = null
+                                )
                             }
-                            imCustomerBusinessSetRepository.insertCustomerInfo(
-                                customerCode = imCustomerBusinessSet.customerCode,
-                                customerName = imCustomerBusinessSet.customerName,
-                                purchaseUserCode = imCustomerBusinessSet.purchaseUserCode,
-                                purchaseUserName = imCustomerBusinessSet.purchaseUserName,
-                                purchaseDepartmentCode = imCustomerBusinessSet.purchaseDepartmentCode,
-                                purchaseDepartmentName = imCustomerBusinessSet.purchaseDepartmentName,
-                                saleUserCode = imCustomerBusinessSet.saleUserCode,
-                                saleUserName = imCustomerBusinessSet.saleUserName,
-                                saleDepartmentCode = imCustomerBusinessSet.saleDepartmentCode,
-                                saleDepartmentName = imCustomerBusinessSet.saleDepartmentName,
-                                remarks = imCustomerBusinessSet.remarks,
-                                customerId = null,
-                                purchaseUserId = null,
-                                purchaseDepartmentId = null,
-                                saleUserId = null,
-                                saleDepartmentId = null
-                            )
-                        }
-                        // 6.物品中间表-->存货档案 √√√√
-                        ITEM_HEADERS -> {
-                            val imItem = ImItem()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "物品编码" -> imItem.code = cellValue
-                                    "物品名称" -> imItem.name = cellValue
-                                    "物品简称" -> imItem.abbr = cellValue
-                                    "条码" -> imItem.barCode = cellValue
-                                    "定价" -> imItem.setPrice = cellValue
-                                    "规格型号" -> imItem.spec = cellValue
-                                    "出版类别" -> imItem.publishType = cellValue
-                                    "经营方式" -> imItem.publishMethod = cellValue
-                                    "物品分类" -> imItem.category = cellValue
-                                    "物品类型" -> imItem.itemType = cellValue
-                                    "财务分类" -> imItem.nature = cellValue
-                                    "长度" -> imItem.length = cellValue
-                                    "宽度" -> imItem.width = cellValue
-                                    "高度" -> imItem.height = cellValue
-                                    "规格包装" -> imItem.packUnit = cellValue
-                                    "计量单位" -> imItem.unit = cellValue
-                                    "是否套装物品" -> imItem.kit = cellValue
-                                    "ISBN" -> imItem.isbn = cellValue
-                                    "附加码" -> imItem.auxCode = cellValue
-                                    "丛书名" -> imItem.seriesName = cellValue
-                                    "副书名" -> imItem.viceBookName = cellValue
-                                    "版次时间-年月" -> imItem.editionYearMonth = cellValue
-                                    "版次序号" -> imItem.editionNo = cellValue
-                                    "主要作者" -> imItem.mainAuthor = cellValue
-                                    "编辑部门编码" -> imItem.departmentCode = cellValue
-                                    "编辑部门名称" -> imItem.departmentName = cellValue
-                                    "责任编辑" -> imItem.dutyEditorName = cellValue
-                                    "责任编辑编码" -> imItem.dutyEditorCode = cellValue
-                                    "出版期间" -> imItem.publishPeriod = cellValue
-                                    "印张" -> imItem.printSheet = cellValue
-                                    "开本" -> imItem.format = cellValue
-                                    "开本尺寸" -> imItem.formatSize = cellValue
-                                    "选题类别" -> imItem.topicType = cellValue
-                                    "装订方式" -> imItem.bindingType = cellValue
-                                    "文种" -> imItem.language = cellValue
-                                    //                            "正文文字" -> imItem.bodyText = cellValue
-                                    "内容简介" -> imItem.summary = cellValue
-                                    "前言" -> imItem.perface = cellValue
-                                    "目录" -> imItem.catalog = cellValue
-                                    "书评" -> imItem.bookReview = cellValue
-                                    "摘要" -> imItem.bookAbstract = cellValue
-                                    "CIP信息" -> imItem.cipInfo = cellValue
-                                    "备注" -> imItem.remarks = cellValue
-                                }
+                            // 6.物品中间表-->存货档案 √√√√
+                            ITEM_HEADERS -> {
+                                val imItem = ImItem()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "物品编码" -> imItem.code = cellValue
+                                        "物品名称" -> imItem.name = cellValue
+                                        "物品简称" -> imItem.abbr = cellValue
+                                        "条码" -> imItem.barCode = cellValue
+                                        "定价" -> imItem.setPrice = cellValue
+                                        "规格型号" -> imItem.spec = cellValue
+                                        "出版类别" -> imItem.publishType = cellValue
+                                        "经营方式" -> imItem.publishMethod = cellValue
+                                        "物品分类" -> imItem.category = cellValue
+                                        "物品类型" -> imItem.itemType = cellValue
+                                        "财务分类" -> imItem.nature = cellValue
+                                        "长度" -> imItem.length = cellValue
+                                        "宽度" -> imItem.width = cellValue
+                                        "高度" -> imItem.height = cellValue
+                                        "规格包装" -> imItem.packUnit = cellValue
+                                        "计量单位" -> imItem.unit = cellValue
+                                        "是否套装物品" -> imItem.kit = cellValue
+                                        "ISBN" -> imItem.isbn = cellValue
+                                        "附加码" -> imItem.auxCode = cellValue
+                                        "丛书名" -> imItem.seriesName = cellValue
+                                        "副书名" -> imItem.viceBookName = cellValue
+                                        "版次时间-年月" -> imItem.editionYearMonth = cellValue
+                                        "版次序号" -> imItem.editionNo = cellValue
+                                        "主要作者" -> imItem.mainAuthor = cellValue
+                                        "编辑部门编码" -> imItem.departmentCode = cellValue
+                                        "编辑部门名称" -> imItem.departmentName = cellValue
+                                        "责任编辑" -> imItem.dutyEditorName = cellValue
+                                        "责任编辑编码" -> imItem.dutyEditorCode = cellValue
+                                        "出版期间" -> imItem.publishPeriod = cellValue
+                                        "印张" -> imItem.printSheet = cellValue
+                                        "开本" -> imItem.format = cellValue
+                                        "开本尺寸" -> imItem.formatSize = cellValue
+                                        "选题类别" -> imItem.topicType = cellValue
+                                        "装订方式" -> imItem.bindingType = cellValue
+                                        "文种" -> imItem.language = cellValue
+                                        //                            "正文文字" -> imItem.bodyText = cellValue
+                                        "内容简介" -> imItem.summary = cellValue
+                                        "前言" -> imItem.perface = cellValue
+                                        "目录" -> imItem.catalog = cellValue
+                                        "书评" -> imItem.bookReview = cellValue
+                                        "摘要" -> imItem.bookAbstract = cellValue
+                                        "CIP信息" -> imItem.cipInfo = cellValue
+                                        "备注" -> imItem.remarks = cellValue
+                                    }
 
-                            }
-                            imItemRepository.insertItem(
-                                code = imItem.code,
-                                name = imItem.name,
-                                abbr = imItem.abbr,
-                                barCode = imItem.barCode,
-                                setPrice = imItem.setPrice,
-                                spec = imItem.spec,
-                                publishType = imItem.publishType,
-                                publishMethod = imItem.publishMethod,
-                                category = imItem.category,
-                                itemType = imItem.itemType,
-                                nature = imItem.nature,
-                                length = imItem.length,
-                                width = imItem.width,
-                                height = imItem.height,
-                                packUnit = imItem.packUnit,
-                                unit = imItem.unit,
-                                kit = imItem.kit,
-                                isbn = imItem.isbn,
-                                auxCode = imItem.auxCode,
-                                seriesName = imItem.seriesName,
-                                viceBookName = imItem.viceBookName,
-                                editionYearMonth = imItem.editionYearMonth,
-                                editionNo = imItem.editionNo,
-                                mainAuthor = imItem.mainAuthor,
-                                departmentCode = imItem.departmentCode,
-                                departmentName = imItem.departmentName,
-                                dutyEditorCode = imItem.departmentCode,
-                                dutyEditorName = imItem.dutyEditorName,
-                                publishPeriod = imItem.publishPeriod,
-                                printSheet = imItem.printSheet,
-                                format = imItem.format,
-                                formatSize = imItem.formatSize,
-                                topicType = imItem.topicType,
-                                bindingType = imItem.bindingType,
-                                language = imItem.language,
-                                noteLanguage = imItem.noteLanguage,
-                                summary = imItem.summary,
-                                perface = imItem.perface,
-                                catalog = imItem.catalog,
-                                bookReview = imItem.bookReview,
-                                bookAbstract = imItem.bookAbstract,
-                                cipInfo = imItem.cipInfo,
-                                remarks = imItem.remarks,
-                                id = null,
-                                itemTypeId = null,
-                                editDepartmentId = null,
-                                dutyEditorId = null,
-                                publishPeriodId = null,
-                                formatId = null,
-                                formatSizeId = null,
-                                natureId = null,
-                                languageId = null,
-                                noteLanguageId = null,
-                                publishMethodId = null,
-                                unitId = null,
-                                bindingTypeId = null
-                            )
-                        }
-                        // 7.物品性质与科目中间表-->7.凭证科目配置表--工作簿1--财务分类总账科目  √√√√
-                        ITEM_NATURE_ACCOUNT_HEADERS -> {
-                            val imItemNatureAccount = ImItemNatureAccount()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "财务分类" -> imItemNatureAccount.itemNature = cellValue
-                                    "存货科目" -> imItemNatureAccount.inventoryAcctCode = cellValue
-                                    "主营业务收入科目" -> imItemNatureAccount.incomeAcctCode = cellValue
-                                    "主营业务成本科目" -> imItemNatureAccount.costAcctCode = cellValue
-                                    "进项税科目" -> imItemNatureAccount.inputTaxAcctCode = cellValue
-                                    "销项税科目" -> imItemNatureAccount.outputTaxAcctCode = cellValue
-                                    "发出商品科目" -> imItemNatureAccount.stockOutItemAcctCode = cellValue
-                                    "暂估应付科目" -> imItemNatureAccount.prolEsteAcctCode = cellValue
-                                    "暂估应收款科目" -> imItemNatureAccount.prolEsteReceiveAcctCode = cellValue
-                                    "暂估进项科目" -> imItemNatureAccount.prolEsteInputAcctCode = cellValue
-                                    "暂估销项科目" -> imItemNatureAccount.prolEsteOutputAcctCode = cellValue
                                 }
+                                imItemRepository.insertItem(
+                                    code = imItem.code,
+                                    name = imItem.name,
+                                    abbr = imItem.abbr,
+                                    barCode = imItem.barCode,
+                                    setPrice = imItem.setPrice,
+                                    spec = imItem.spec,
+                                    publishType = imItem.publishType,
+                                    publishMethod = imItem.publishMethod,
+                                    category = imItem.category,
+                                    itemType = imItem.itemType,
+                                    nature = imItem.nature,
+                                    length = imItem.length,
+                                    width = imItem.width,
+                                    height = imItem.height,
+                                    packUnit = imItem.packUnit,
+                                    unit = imItem.unit,
+                                    kit = imItem.kit,
+                                    isbn = imItem.isbn,
+                                    auxCode = imItem.auxCode,
+                                    seriesName = imItem.seriesName,
+                                    viceBookName = imItem.viceBookName,
+                                    editionYearMonth = imItem.editionYearMonth,
+                                    editionNo = imItem.editionNo,
+                                    mainAuthor = imItem.mainAuthor,
+                                    departmentCode = imItem.departmentCode,
+                                    departmentName = imItem.departmentName,
+                                    dutyEditorCode = imItem.departmentCode,
+                                    dutyEditorName = imItem.dutyEditorName,
+                                    publishPeriod = imItem.publishPeriod,
+                                    printSheet = imItem.printSheet,
+                                    format = imItem.format,
+                                    formatSize = imItem.formatSize,
+                                    topicType = imItem.topicType,
+                                    bindingType = imItem.bindingType,
+                                    language = imItem.language,
+                                    noteLanguage = imItem.noteLanguage,
+                                    summary = imItem.summary,
+                                    perface = imItem.perface,
+                                    catalog = imItem.catalog,
+                                    bookReview = imItem.bookReview,
+                                    bookAbstract = imItem.bookAbstract,
+                                    cipInfo = imItem.cipInfo,
+                                    remarks = imItem.remarks,
+                                    id = null,
+                                    itemTypeId = null,
+                                    editDepartmentId = null,
+                                    dutyEditorId = null,
+                                    publishPeriodId = null,
+                                    formatId = null,
+                                    formatSizeId = null,
+                                    natureId = null,
+                                    languageId = null,
+                                    noteLanguageId = null,
+                                    publishMethodId = null,
+                                    unitId = null,
+                                    bindingTypeId = null
+                                )
                             }
-                            imItemNatureAccountRepository.insertItemNatureAccount(
-                                itemNature = imItemNatureAccount.itemNature,
-                                inventoryAcctCode = imItemNatureAccount.inventoryAcctCode,
-                                incomeAcctCode = imItemNatureAccount.incomeAcctCode,
-                                costAcctCode = imItemNatureAccount.costAcctCode,
-                                inputTaxAcctCode = imItemNatureAccount.inputTaxAcctCode,
-                                outputTaxAcctCode = imItemNatureAccount.outputTaxAcctCode,
-                                stockOutItemAcctCode = imItemNatureAccount.stockOutItemAcctCode,
-                                prolEsteAcctCode = imItemNatureAccount.prolEsteAcctCode,
-                                prolEsteReceiveAcctCode = imItemNatureAccount.prolEsteReceiveAcctCode,
-                                prolEsteInputAcctCode = imItemNatureAccount.prolEsteInputAcctCode,
-                                prolEsteOutputAcctCode = imItemNatureAccount.prolEsteOutputAcctCode,
-                                itemNatureId = null
-                            )
-                        }
-                        // 7.1物品性质与科目中间表-->7.凭证科目配置表--工作簿2--财务分类总账科目  √√√√   工作簿34
-                        IM_COST_ITEM_ACCOUNT_HEADERS -> {
-                            val imCostItemAccount = ImCostItemAccount()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "ERP编码" -> imCostItemAccount.costItemCode = cellValue
-                                    "费用项目名称" -> imCostItemAccount.costItemName = cellValue
-                                    "上级费用项目" -> imCostItemAccount.parentCostItem = cellValue
-                                    "税率" -> imCostItemAccount.tax = cellValue
-                                    "备注" -> imCostItemAccount.remarks = cellValue
-                                    "生产成本科目" -> imCostItemAccount.protCostAcctCode = cellValue
-                                    "应付生产成本科目" -> imCostItemAccount.payProtCostAcctCode = cellValue
-                                    "结算应付科目" -> imCostItemAccount.settCopeAcctCode = cellValue
-                                    "预付科目" -> imCostItemAccount.prePayAcctCode = cellValue
-                                    "支付科目" -> imCostItemAccount.payAcctCode = cellValue
-                                    "暂估进项税科目" -> imCostItemAccount.inputTaxAcctCode = cellValue
-                                    "进项税已开票" -> imCostItemAccount.inputTaxInvoiceAcctCode = cellValue
-                                    "增值税科目" -> imCostItemAccount.valueTaxAcctCode = cellValue
-                                    "城市维护建设税科目" -> imCostItemAccount.cityMaintainAcctCode = cellValue
-                                    "教育费附加科目" -> imCostItemAccount.educationAcctCode = cellValue
-                                    "地方教育费附加科目" -> imCostItemAccount.localEducationAcctCode = cellValue
-                                    "劳务税科目" -> imCostItemAccount.laborTaxAcctCode = cellValue
-                                    "稿酬税科目" -> imCostItemAccount.royaltiesTaxAcctCode = cellValue
+                            // 7.物品性质与科目中间表-->7.凭证科目配置表--工作簿1--财务分类总账科目  √√√√
+                            ITEM_NATURE_ACCOUNT_HEADERS -> {
+                                val imItemNatureAccount = ImItemNatureAccount()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "财务分类" -> imItemNatureAccount.itemNature = cellValue
+                                        "存货科目" -> imItemNatureAccount.inventoryAcctCode = cellValue
+                                        "主营业务收入科目" -> imItemNatureAccount.incomeAcctCode = cellValue
+                                        "主营业务成本科目" -> imItemNatureAccount.costAcctCode = cellValue
+                                        "进项税科目" -> imItemNatureAccount.inputTaxAcctCode = cellValue
+                                        "销项税科目" -> imItemNatureAccount.outputTaxAcctCode = cellValue
+                                        "发出商品科目" -> imItemNatureAccount.stockOutItemAcctCode = cellValue
+                                        "暂估应付科目" -> imItemNatureAccount.prolEsteAcctCode = cellValue
+                                        "暂估应收款科目" -> imItemNatureAccount.prolEsteReceiveAcctCode = cellValue
+                                        "暂估进项科目" -> imItemNatureAccount.prolEsteInputAcctCode = cellValue
+                                        "暂估销项科目" -> imItemNatureAccount.prolEsteOutputAcctCode = cellValue
+                                    }
                                 }
+                                imItemNatureAccountRepository.insertItemNatureAccount(
+                                    itemNature = imItemNatureAccount.itemNature,
+                                    inventoryAcctCode = imItemNatureAccount.inventoryAcctCode,
+                                    incomeAcctCode = imItemNatureAccount.incomeAcctCode,
+                                    costAcctCode = imItemNatureAccount.costAcctCode,
+                                    inputTaxAcctCode = imItemNatureAccount.inputTaxAcctCode,
+                                    outputTaxAcctCode = imItemNatureAccount.outputTaxAcctCode,
+                                    stockOutItemAcctCode = imItemNatureAccount.stockOutItemAcctCode,
+                                    prolEsteAcctCode = imItemNatureAccount.prolEsteAcctCode,
+                                    prolEsteReceiveAcctCode = imItemNatureAccount.prolEsteReceiveAcctCode,
+                                    prolEsteInputAcctCode = imItemNatureAccount.prolEsteInputAcctCode,
+                                    prolEsteOutputAcctCode = imItemNatureAccount.prolEsteOutputAcctCode,
+                                    itemNatureId = null
+                                )
                             }
-                            imCostItemAccountRepository.insertCostItem(
-                                costItemCode = imCostItemAccount.costItemCode,
-                                costItemName = imCostItemAccount.costItemName,
-                                parentCostItem = imCostItemAccount.parentCostItem,
-                                tax = imCostItemAccount.tax,
-                                remarks = imCostItemAccount.remarks,
-                                protCostAcctCode = imCostItemAccount.protCostAcctCode,
-                                payProtCostAcctCode = imCostItemAccount.payProtCostAcctCode,
-                                settCopeAcctCode = imCostItemAccount.settCopeAcctCode,
-                                prePayAcctCode = imCostItemAccount.prePayAcctCode,
-                                payAcctCode = imCostItemAccount.payAcctCode,
-                                inputTaxAcctCode = imCostItemAccount.inputTaxAcctCode,
-                                inputTaxInvoiceAcctCode = imCostItemAccount.inputTaxInvoiceAcctCode,
-                                valueTaxAcctCode = imCostItemAccount.valueTaxAcctCode,
-                                cityMaintainAcctCode = imCostItemAccount.cityMaintainAcctCode,
-                                educationAcctCode = imCostItemAccount.educationAcctCode,
-                                localEducationAcctCode = imCostItemAccount.localEducationAcctCode,
-                                laborTaxAcctCode = imCostItemAccount.laborTaxAcctCode,
-                                royaltiesTaxAcctCode = imCostItemAccount.royaltiesTaxAcctCode,
-                                costItemId = null,
-                            )
-                        }
-                        // 8 库存期初中间表-->库存期初  √√√√
-                        IM_STOCK_INIT_HEADERS -> {
-                            val imStockInit = ImStockInit()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "物品编码" -> imStockInit.itemCode = cellValue
-                                    "物品名称" -> imStockInit.itemName = cellValue
-                                    "书号" -> imStockInit.isbn = cellValue
-                                    "规格型号" -> imStockInit.spec = cellValue
-                                    "仓库" -> imStockInit.position = cellValue
-                                    "批次的首次入库时间" -> imStockInit.fristInDate = cellValue
-                                    "批次（印次）" -> imStockInit.produceNum = cellValue
-                                    "结存数量" -> imStockInit.quantity = cellValue
-                                    "结存成本单价" -> imStockInit.costPrice = cellValue
-                                    "结存金额" -> imStockInit.amount = cellValue
+                            // 7.1物品性质与科目中间表-->7.凭证科目配置表--工作簿2--财务分类总账科目  √√√√   工作簿34
+                            IM_COST_ITEM_ACCOUNT_HEADERS -> {
+                                val imCostItemAccount = ImCostItemAccount()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "ERP编码" -> imCostItemAccount.costItemCode = cellValue
+                                        "费用项目名称" -> imCostItemAccount.costItemName = cellValue
+                                        "上级费用项目" -> imCostItemAccount.parentCostItem = cellValue
+                                        "税率" -> imCostItemAccount.tax = cellValue
+                                        "备注" -> imCostItemAccount.remarks = cellValue
+                                        "生产成本科目" -> imCostItemAccount.protCostAcctCode = cellValue
+                                        "应付生产成本科目" -> imCostItemAccount.payProtCostAcctCode = cellValue
+                                        "结算应付科目" -> imCostItemAccount.settCopeAcctCode = cellValue
+                                        "预付科目" -> imCostItemAccount.prePayAcctCode = cellValue
+                                        "支付科目" -> imCostItemAccount.payAcctCode = cellValue
+                                        "暂估进项税科目" -> imCostItemAccount.inputTaxAcctCode = cellValue
+                                        "进项税已开票" -> imCostItemAccount.inputTaxInvoiceAcctCode = cellValue
+                                        "增值税科目" -> imCostItemAccount.valueTaxAcctCode = cellValue
+                                        "城市维护建设税科目" -> imCostItemAccount.cityMaintainAcctCode = cellValue
+                                        "教育费附加科目" -> imCostItemAccount.educationAcctCode = cellValue
+                                        "地方教育费附加科目" -> imCostItemAccount.localEducationAcctCode = cellValue
+                                        "劳务税科目" -> imCostItemAccount.laborTaxAcctCode = cellValue
+                                        "稿酬税科目" -> imCostItemAccount.royaltiesTaxAcctCode = cellValue
+                                    }
                                 }
+                                imCostItemAccountRepository.insertCostItem(
+                                    costItemCode = imCostItemAccount.costItemCode,
+                                    costItemName = imCostItemAccount.costItemName,
+                                    parentCostItem = imCostItemAccount.parentCostItem,
+                                    tax = imCostItemAccount.tax,
+                                    remarks = imCostItemAccount.remarks,
+                                    protCostAcctCode = imCostItemAccount.protCostAcctCode,
+                                    payProtCostAcctCode = imCostItemAccount.payProtCostAcctCode,
+                                    settCopeAcctCode = imCostItemAccount.settCopeAcctCode,
+                                    prePayAcctCode = imCostItemAccount.prePayAcctCode,
+                                    payAcctCode = imCostItemAccount.payAcctCode,
+                                    inputTaxAcctCode = imCostItemAccount.inputTaxAcctCode,
+                                    inputTaxInvoiceAcctCode = imCostItemAccount.inputTaxInvoiceAcctCode,
+                                    valueTaxAcctCode = imCostItemAccount.valueTaxAcctCode,
+                                    cityMaintainAcctCode = imCostItemAccount.cityMaintainAcctCode,
+                                    educationAcctCode = imCostItemAccount.educationAcctCode,
+                                    localEducationAcctCode = imCostItemAccount.localEducationAcctCode,
+                                    laborTaxAcctCode = imCostItemAccount.laborTaxAcctCode,
+                                    royaltiesTaxAcctCode = imCostItemAccount.royaltiesTaxAcctCode,
+                                    costItemId = null,
+                                )
                             }
-                            imStockInitRepository.insertImStockInit(
-                                itemCode = imStockInit.itemCode,
-                                itemName = imStockInit.itemName,
-                                isbn = imStockInit.isbn,
-                                spec = imStockInit.spec,
-                                position = imStockInit.position,
-                                fristInDate = imStockInit.fristInDate,
-                                produceNum = imStockInit.produceNum,
-                                quantity = imStockInit.quantity,
-                                costPrice = imStockInit.costPrice,
-                                amount = imStockInit.amount,
-                                itemId = null,
-                                positionId = null,
-                                billId = null
-                            )
-                        }
-                        // 9.销售在途中间 表-> 销售在途  √√√√
-                        SELL_BILL_HEADERS -> {
-                            val imSellBill = ImSellBill()
-                            // 使用headerIndexMap来获取正确的列位置
-                            headerIndexMap.forEach { (headerName, columnIndex) ->
-                                val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
-                                when (headerName) {
-                                    "销售订单号" -> imSellBill.orderBillNo = cellValue
-                                    "订单日期" -> imSellBill.orderBillDate = cellValue
-                                    "销售订单行号" -> imSellBill.orderBillRownum = cellValue
-                                    "出库单据号" -> imSellBill.outBillNo = cellValue
-                                    "出库单据日期" -> imSellBill.outBillDate = cellValue
-                                    "出库单据行号" -> imSellBill.outBillRownum = cellValue
-                                    "客户编码" -> imSellBill.customerCode = cellValue
-                                    "客户名称" -> imSellBill.customerName = cellValue
-                                    "地区" -> imSellBill.area = cellValue
-                                    "收货地址" -> imSellBill.receivingAddress = cellValue
-                                    "收货人" -> imSellBill.receivingLinkman = cellValue
-                                    "收货电话" -> imSellBill.receivingLinkmanTel = cellValue
-                                    "订书依据" -> imSellBill.gist = cellValue
-                                    "业务员编码" -> imSellBill.userCode = cellValue
-                                    "业务员名称" -> imSellBill.userName = cellValue
-                                    "部门编码" -> imSellBill.departmentCode = cellValue
-                                    "部门名称" -> imSellBill.departmentName = cellValue
-                                    "物品编码" -> imSellBill.itemCode = cellValue
-                                    "物品名称" -> imSellBill.itemName = cellValue
-                                    "批次" -> imSellBill.produceNum = cellValue
-                                    "定价" -> imSellBill.setPrice = cellValue
-                                    "计量单位" -> imSellBill.unit = cellValue
-                                    "未开票数量" -> imSellBill.noInvoiceQuantity = cellValue
-                                    "未开票平均折扣" -> imSellBill.noInvoiceDiscount = cellValue
-                                    "未开票码洋" -> imSellBill.noInvoiceAmount = cellValue
-                                    "未开票金额（实洋）" -> imSellBill.noInvoiceRealAmount = cellValue
-                                    "税率(%)" -> imSellBill.tax = cellValue
-                                    "税金(元)" -> imSellBill.taxAmount = cellValue
-                                    "仓库货位" -> imSellBill.position = cellValue
-                                    "成本单价" -> imSellBill.costPrice = cellValue
-                                    "成本金额" -> imSellBill.costAmount = cellValue
-                                    "备注" -> imSellBill.remarks = cellValue
-                                    "批次的首次入库日期" -> imSellBill.firstInTime = cellValue
+                            // 8 库存期初中间表-->库存期初  √√√√
+                            IM_STOCK_INIT_HEADERS -> {
+                                val imStockInit = ImStockInit()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "物品编码" -> imStockInit.itemCode = cellValue
+                                        "物品名称" -> imStockInit.itemName = cellValue
+                                        "书号" -> imStockInit.isbn = cellValue
+                                        "规格型号" -> imStockInit.spec = cellValue
+                                        "仓库" -> imStockInit.position = cellValue
+                                        "批次的首次入库时间" -> imStockInit.fristInDate = cellValue
+                                        "批次（印次）" -> imStockInit.produceNum = cellValue
+                                        "结存数量" -> imStockInit.quantity = cellValue
+                                        "结存成本单价" -> imStockInit.costPrice = cellValue
+                                        "结存金额" -> imStockInit.amount = cellValue
+                                    }
                                 }
+                                imStockInitRepository.insertImStockInit(
+                                    itemCode = imStockInit.itemCode,
+                                    itemName = imStockInit.itemName,
+                                    isbn = imStockInit.isbn,
+                                    spec = imStockInit.spec,
+                                    position = imStockInit.position,
+                                    fristInDate = imStockInit.fristInDate,
+                                    produceNum = imStockInit.produceNum,
+                                    quantity = imStockInit.quantity,
+                                    costPrice = imStockInit.costPrice,
+                                    amount = imStockInit.amount,
+                                    itemId = null,
+                                    positionId = null,
+                                    billId = null
+                                )
                             }
-                            imSellBillRepository.insertSellBill(
-                                orderBillNo = imSellBill.orderBillNo,
-                                orderBillDate = imSellBill.orderBillDate,
-                                orderBillRownum = imSellBill.orderBillRownum,
-                                outBillNo = imSellBill.outBillNo,
-                                outBillDate = imSellBill.outBillDate,
-                                outBillRownum = imSellBill.outBillRownum,
-                                customerCode = imSellBill.customerCode,
-                                customerName = imSellBill.customerName,
-                                area = imSellBill.area,
-                                receivingAddress = imSellBill.receivingAddress,
-                                receivingLinkman = imSellBill.receivingLinkman,
-                                receivingLinkmanTel = imSellBill.receivingLinkmanTel,
-                                gist = imSellBill.gist,
-                                userCode = imSellBill.userCode,
-                                userName = imSellBill.userName,
-                                departmentCode = imSellBill.departmentCode,
-                                departmentName = imSellBill.departmentName,
-                                itemCode = imSellBill.itemCode,
-                                itemName = imSellBill.itemName,
-                                produceNum = imSellBill.produceNum,
-                                setPrice = imSellBill.setPrice,
-                                unit = imSellBill.unit,
-                                noInvoiceQuantity = imSellBill.noInvoiceQuantity,
-                                noInvoiceDiscount = imSellBill.noInvoiceDiscount,
-                                noInvoiceAmount = imSellBill.noInvoiceAmount,
-                                noInvoiceRealAmount = imSellBill.noInvoiceRealAmount,
-                                tax = imSellBill.tax,
-                                taxAmount = imSellBill.taxAmount,
-                                position = imSellBill.position,
-                                costPrice = imSellBill.costPrice,
-                                costAmount = imSellBill.costAmount,
-                                remarks = imSellBill.remarks,
-                                firstInTime = imSellBill.firstInTime
-                            )
+                            // 9.销售在途中间 表-> 销售在途  √√√√
+                            SELL_BILL_HEADERS -> {
+                                val imSellBill = ImSellBill()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "销售订单号" -> imSellBill.orderBillNo = cellValue
+                                        "订单日期" -> imSellBill.orderBillDate = cellValue
+                                        "销售订单行号" -> imSellBill.orderBillRownum = cellValue
+                                        "出库单据号" -> imSellBill.outBillNo = cellValue
+                                        "出库单据日期" -> imSellBill.outBillDate = cellValue
+                                        "出库单据行号" -> imSellBill.outBillRownum = cellValue
+                                        "客户编码" -> imSellBill.customerCode = cellValue
+                                        "客户名称" -> imSellBill.customerName = cellValue
+                                        "地区" -> imSellBill.area = cellValue
+                                        "收货地址" -> imSellBill.receivingAddress = cellValue
+                                        "收货人" -> imSellBill.receivingLinkman = cellValue
+                                        "收货电话" -> imSellBill.receivingLinkmanTel = cellValue
+                                        "订书依据" -> imSellBill.gist = cellValue
+                                        "业务员编码" -> imSellBill.userCode = cellValue
+                                        "业务员名称" -> imSellBill.userName = cellValue
+                                        "部门编码" -> imSellBill.departmentCode = cellValue
+                                        "部门名称" -> imSellBill.departmentName = cellValue
+                                        "物品编码" -> imSellBill.itemCode = cellValue
+                                        "物品名称" -> imSellBill.itemName = cellValue
+                                        "批次" -> imSellBill.produceNum = cellValue
+                                        "定价" -> imSellBill.setPrice = cellValue
+                                        "计量单位" -> imSellBill.unit = cellValue
+                                        "未开票数量" -> imSellBill.noInvoiceQuantity = cellValue
+                                        "未开票平均折扣" -> imSellBill.noInvoiceDiscount = cellValue
+                                        "未开票码洋" -> imSellBill.noInvoiceAmount = cellValue
+                                        "未开票金额（实洋）" -> imSellBill.noInvoiceRealAmount = cellValue
+                                        "税率(%)" -> imSellBill.tax = cellValue
+                                        "税金(元)" -> imSellBill.taxAmount = cellValue
+                                        "仓库货位" -> imSellBill.position = cellValue
+                                        "成本单价" -> imSellBill.costPrice = cellValue
+                                        "成本金额" -> imSellBill.costAmount = cellValue
+                                        "备注" -> imSellBill.remarks = cellValue
+                                        "批次的首次入库日期" -> imSellBill.firstInTime = cellValue
+                                    }
+                                }
+                                imSellBillRepository.insertSellBill(
+                                    orderBillNo = imSellBill.orderBillNo,
+                                    orderBillDate = imSellBill.orderBillDate,
+                                    orderBillRownum = imSellBill.orderBillRownum,
+                                    outBillNo = imSellBill.outBillNo,
+                                    outBillDate = imSellBill.outBillDate,
+                                    outBillRownum = imSellBill.outBillRownum,
+                                    customerCode = imSellBill.customerCode,
+                                    customerName = imSellBill.customerName,
+                                    area = imSellBill.area,
+                                    receivingAddress = imSellBill.receivingAddress,
+                                    receivingLinkman = imSellBill.receivingLinkman,
+                                    receivingLinkmanTel = imSellBill.receivingLinkmanTel,
+                                    gist = imSellBill.gist,
+                                    userCode = imSellBill.userCode,
+                                    userName = imSellBill.userName,
+                                    departmentCode = imSellBill.departmentCode,
+                                    departmentName = imSellBill.departmentName,
+                                    itemCode = imSellBill.itemCode,
+                                    itemName = imSellBill.itemName,
+                                    produceNum = imSellBill.produceNum,
+                                    setPrice = imSellBill.setPrice,
+                                    unit = imSellBill.unit,
+                                    noInvoiceQuantity = imSellBill.noInvoiceQuantity,
+                                    noInvoiceDiscount = imSellBill.noInvoiceDiscount,
+                                    noInvoiceAmount = imSellBill.noInvoiceAmount,
+                                    noInvoiceRealAmount = imSellBill.noInvoiceRealAmount,
+                                    tax = imSellBill.tax,
+                                    taxAmount = imSellBill.taxAmount,
+                                    position = imSellBill.position,
+                                    costPrice = imSellBill.costPrice,
+                                    costAmount = imSellBill.costAmount,
+                                    remarks = imSellBill.remarks,
+                                    firstInTime = imSellBill.firstInTime
+                                )
+                            }
+
+                            OTHERS_SKIP_HEADERS -> continue
                         }
-
-                        null -> {
-                            // 未匹配到任何类型，跳过
-                            continue
-                        }
-
-                        OTHERS_SKIP_HEADERS -> continue
-                    }
-                    // 进度计算：10% - 90%
-                    val progress = 10 + ((i + 1) * 80 / totalRows)
-                    val message = "正在处理 ($currentFileIndex/$totalFiles) - 第 ${i + 1}/$totalRows 行"
-
-                    updateTaskStatus(taskId, "processing", progress, message)
-
-                    // 每处理5行或最后一行时发送进度更新
-                    if ((i + 1) % 5 == 0 || i == totalRows - 1) {
-                        webSocketHandler.sendToSession(
-                            sessionId, ProgressData(
-                                type = "processing",
-                                taskId = taskId,
-                                fileName = fileName,
-                                progress = progress,
-                                status = "processing",
-                                message = message
-                            )
+                    } catch (e: Exception) {
+                        // 记录错误行的详细数据
+                        val rowData = formatRowData(row, headerIndexMap, evaluator)
+                        logger.error(
+                            """
+                            |处理Excel数据失败:
+                            |文件名: $fileName
+                            |工作表: ${sheet.sheetName}
+                            |行号: ${i + 1}
+                            |数据内容: 
+                            |$rowData
+                            |错误信息: ${e.message}
+                            |""".trimMargin()
                         )
+
+                        // 重新抛出异常以触发事务回滚
+                        throw Exception("处理第 ${i + 1} 行数据失败: ${e.message}", e)
                     }
                 }
-                //处理完成根据表头调用存储过程
+                // 进度计算：10% - 90%
+                val progress = 10 + ((i + 1) * 80 / totalRows)
+                val message = "正在处理 ($currentFileIndex/$totalFiles) - 第 ${i + 1}/$totalRows 行"
+
+                updateTaskStatus(taskId, "processing", progress, message)
+
+                // 每处理5行或最后一行时发送进度更新
+                if ((i + 1) % 5 == 0 || i == totalRows - 1) {
+                    webSocketHandler.sendToSession(
+                        sessionId, ProgressData(
+                            type = "processing",
+                            taskId = taskId,
+                            fileName = fileName,
+                            progress = progress,
+                            status = "processing",
+                            message = message
+                        )
+                    )
+                }
+            }
+            //处理完成根据表头调用存储过程
 //                when (matchedHeaderType) {
 //                    DEPARTMENT_HEADERS -> {
 //                        //导入前 清除该类型的数据
@@ -1189,7 +1220,7 @@ class FileProcessingService(
 //
 //                    OTHERS_SKIP_HEADERS -> continue
 //                }
-            }
+
             //关闭
             workbook.close()
 
@@ -1209,6 +1240,7 @@ class FileProcessingService(
             logger.info("文件处理完成: $fileName (taskId: $taskId)")
 
             return true
+
         } catch (e: Exception) {
             logger.error("处理文件失败: ${e.message}", e)
             println("处理文件失败: ${e.message}")
@@ -1249,88 +1281,21 @@ class FileProcessingService(
     }
 
     /**
-     * 检查给定的 Excel 行是否包含 ExcelHeaderData 枚举中定义的必要属性。
-     * 不要求完全匹配或顺序一致，支持模糊匹配（忽略大小写、空格、常见标点符号）。
-     *
-     * @param row 从 Excel 表格中获取的当前行对象。
-     * @param evaluator 用于评估公式的 FormulaEvaluator 实例。
-     * @return 如果行包含任何一个预定义头部列表的所有必要属性，则返回对应的ExcelHeaderData和列索引映射；否则返回null。
+     * 格式化行数据为可读的字符串，用于日志记录
+     * @param row Excel行对象
+     * @param headerIndexMap 表头与列索引的映射
+     * @param evaluator 公式计算器
+     * @return 格式化的行数据字符串
      */
-    private fun isValidExcelHeaderRow(
-        row: Row, evaluator: FormulaEvaluator
-    ): Pair<ExcelHeaderData?, Map<String, Int>>? {
-        val rowData = mutableListOf<String>()
-        val headerIndexMap = mutableMapOf<String, Int>() // 存储标准列名与索引的映射
-        val normalizedHeaderMap = mutableMapOf<String, String>() // 存储标准列名与实际列名的映射
+    private fun formatRowData(row: Row, headerIndexMap: Map<String, Int>, evaluator: FormulaEvaluator): String {
+        val sb = StringBuilder()
 
-        // 获取行中的所有列名
-        for (i in 0 until row.lastCellNum) {
-            val cell = row.getCell(i)
-            val cellValue = if (cell != null) {
-                when (cell.cellType) {
-                    CellType.STRING -> cell.stringCellValue.trim()
-                    CellType.NUMERIC -> cell.numericCellValue.toString()
-                    CellType.BOOLEAN -> cell.booleanCellValue.toString()
-                    CellType.FORMULA -> {
-                        val cellValue = evaluator.evaluate(cell)
-                        when (cellValue.cellType) {
-                            CellType.STRING -> cellValue.stringValue.trim()
-                            CellType.NUMERIC -> cellValue.numberValue.toString()
-                            CellType.BOOLEAN -> cellValue.booleanValue.toString()
-                            else -> ""
-                        }
-                    }
-
-                    else -> ""
-                }
-            } else ""
-            if (cellValue.isNotEmpty()) {
-                rowData.add(cellValue)
-                // 存储原始列名和索引
-                headerIndexMap[cellValue] = i
-            }
+        headerIndexMap.forEach { (headerName, columnIndex) ->
+            val cellValue = excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+            sb.append("$headerName: $cellValue\n")
         }
-        // 检查每个预定义的表头格式
-        for (headerEnum in ExcelHeaderData.entries) {
-            // 创建一个映射来存储匹配的标准列名和实际列名
-            val matchedHeaders = mutableMapOf<String, String>()
-            // 检查是否包含所有必要的属性（使用模糊匹配）
-            val containsAllRequired = headerEnum.headers.all { required ->
-                val match = rowData.find { actual ->
-                    // 标准化字符串进行比较（忽略大小写、空格、常见标点符号）
-                    normalizeString(actual).contains(normalizeString(required)) || normalizeString(required).contains(
-                        normalizeString(actual)
-                    )
-                }
-                if (match != null) {
-                    matchedHeaders[required] = match
-                    normalizedHeaderMap[required] = match
-                }
-                match != null
-            }
-            if (containsAllRequired) {
-                logger.info("找到匹配的表头格式: ${headerEnum.name}")
-                // 创建新的headerIndexMap，使用标准列名作为键
-                val standardizedHeaderIndexMap = matchedHeaders.mapValues { (_, actualHeader) ->
-                    headerIndexMap[actualHeader] ?: -1
-                }
-                return Pair(headerEnum, standardizedHeaderIndexMap)
-            }
-        }
-        return null
-    }
 
-    /**
-     * 标准化字符串以进行比较
-     * 1. 转换为小写
-     * 2. 移除所有空格
-     * 3. 移除常见标点符号
-     * 4. 统一全角字符为半角字符
-     */
-    private fun normalizeString(input: String): String {
-        return input.lowercase().replace(Regex("\\s+"), "") // 移除所有空格
-            .replace(Regex("[,.:;，。：；、]"), "") // 移除常见标点符号
-            .replace("（", "(").replace("）", ")").replace("【", "[").replace("】", "]").trim()
+        return sb.toString()
     }
 
 

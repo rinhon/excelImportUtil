@@ -38,7 +38,7 @@ interface ImDepartmentRepository : CrudRepository<ImDepartment, Long> {
     @Modifying
     @Query(
         """
-              DELETE FROM IM_DEPARTMENT_TYPE
+              DELETE FROM IM_DEPARTMENT
         """
     )
     fun deleteAllImDepartment()

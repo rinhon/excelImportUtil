@@ -114,5 +114,7 @@ interface ImItemRepository : CrudRepository<ImItem, Long> {
         """
     )
     fun deleteAllImItem()
+
+
 }
 

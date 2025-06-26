@@ -19,9 +19,9 @@ interface ImDepartmentTypeRepository : CrudRepository<ImDepartmentType, Long> {
     @Query(
         """
         INSERT INTO IM_DEPARTMENT_TYPE (
-            F_NAME, F_REMARKS, F_ID, F_CODE
+            F_NAME, F_REMARKS, F_ID, F_CODE, F_SEQ
         ) VALUES (
-            :name, :remarks, :id, :code
+            :name, :remarks, :id, :code, :seq
         )
         """
     )
@@ -29,17 +29,18 @@ interface ImDepartmentTypeRepository : CrudRepository<ImDepartmentType, Long> {
         @Param("name") name: String?,
         @Param("remarks") remarks: String?,
         @Param("id") id: Long?,
-        @Param("code") code: String?
+        @Param("code") code: String?,
+        @Param("seq") seq: String?
     )
 
     // 自定义插入方法（如果需要处理特殊逻辑）
     @Modifying
     @Query(
         """
-            DELETE FROM IM_DEPARTMENT
+            DELETE FROM IM_DEPARTMENT_TYPE
         """
     )
-    fun deleteAllDepartment(
+    fun deleteAllDepartmentType(
 
     )
 
