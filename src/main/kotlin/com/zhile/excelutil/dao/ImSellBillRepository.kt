@@ -18,21 +18,23 @@ interface ImSellBillRepository : CrudRepository<ImSellBill, Long> {
     @Query(
         """
         INSERT INTO IM_SELL_BILL (
+        F_DIRECTION,
             F_ORDER_BILL_NO, F_ORDER_BILL_DATE, F_ORDER_BILL_ROWNUM, F_OUT_BILL_NO, F_OUT_BILL_DATE, F_OUT_BILL_ROWNUM,
             F_CUSTOMER_CODE, F_CUSTOMER_NAME, F_AREA, F_RECEIVING_ADDRESS, F_RECEIVING_LINKMAN, F_RECEIVING_LINKMAN_TEL,
             F_GIST, F_USER_CODE, F_USER_NAME, F_DEPARTMENT_CODE, F_DEPARTMENT_NAME, F_ITEM_CODE, F_ITEM_NAME, F_PRODUCE_NUM,
             F_SET_PRICE, F_UNIT, F_NO_INVOICE_QUANTITY, F_NO_INVOICE_DISCOUNT, F_NO_INVOICE_AMOUNT, F_NO_INVOICE_REAL_AMOUNT,
-            F_TAX, F_TAX_AMOUNT, F_POSITION, F_COST_PRICE, F_COST_AMOUNT, F_REMARKS, F_FIRST_IN_TIME
+            F_TAX, F_TAX_AMOUNT, F_POSITION_CODE,F_POSITION_NAME, F_COST_PRICE, F_COST_AMOUNT, F_REMARKS,F_FIRST_IN_TIME
         ) VALUES (
-            :orderBillNo, :orderBillDate, :orderBillRownum, :outBillNo, :outBillDate, :outBillRownum,
+            :direction,:orderBillNo, :orderBillDate, :orderBillRownum, :outBillNo, :outBillDate, :outBillRownum,
             :customerCode, :customerName, :area, :receivingAddress, :receivingLinkman, :receivingLinkmanTel,
             :gist, :userCode, :userName, :departmentCode, :departmentName, :itemCode, :itemName, :produceNum,
             :setPrice, :unit, :noInvoiceQuantity, :noInvoiceDiscount, :noInvoiceAmount, :noInvoiceRealAmount,
-            :tax, :taxAmount, :position, :costPrice, :costAmount, :remarks, :firstInTime
+            :tax, :taxAmount, :positionCode,:positionName, :costPrice, :costAmount, :remarks,:firstInTime
         )
         """
     )
     fun insertSellBill(
+        @Param("direction") direction: String?,
         @Param("orderBillNo") orderBillNo: String?,
         @Param("orderBillDate") orderBillDate: String?,
         @Param("orderBillRownum") orderBillRownum: String?,
@@ -61,7 +63,8 @@ interface ImSellBillRepository : CrudRepository<ImSellBill, Long> {
         @Param("noInvoiceRealAmount") noInvoiceRealAmount: String?,
         @Param("tax") tax: String?,
         @Param("taxAmount") taxAmount: String?,
-        @Param("position") position: String?,
+        @Param("positionCode") positionCode: String?,
+        @Param("positionName") positionName: String?,
         @Param("costPrice") costPrice: String?,
         @Param("costAmount") costAmount: String?,
         @Param("remarks") remarks: String?,

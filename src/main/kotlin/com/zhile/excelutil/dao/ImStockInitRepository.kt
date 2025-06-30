@@ -19,13 +19,37 @@ interface ImStockInitRepository : CrudRepository<ImStockInit, Long> {
     @Query(
         """
         INSERT INTO IM_STOCK_INIT (
-            F_ITEM_CODE, F_ITEM_NAME, F_ISBN, F_SPEC, F_POSITION, 
-            F_FRIST_IN_DATE, F_PRODUCE_NUM, F_QUANTITY, F_COST_PRICE, F_AMOUNT, 
-            F_ITEM_ID, F_POSITION_ID, F_BILL_ID
+        F_ITEM_CODE,
+        F_ITEM_NAME,
+        F_ISBN,
+        F_SPEC,
+        F_POSITION_CODE,
+        F_POSITION_NAME,
+        F_FRIST_IN_DATE,
+        F_PRODUCE_NUM,
+        F_QUANTITY,
+        F_COST_PRICE,
+        F_AMOUNT,
+        F_ITEM_ID,
+        F_POSITION_ID,
+        F_BILL_ID
+
         ) VALUES  (
-            :itemCode, :itemName, :isbn, :spec, :position, 
-            :fristInDate, :produceNum, :quantity, :costPrice, :amount, 
-            :itemId, :positionId, :billId
+            :itemCode,
+            :itemName,
+            :isbn,
+            :spec,
+            :positionCode,
+            :positionName,
+            
+            :fristInDate,
+            :produceNum,
+            :quantity,
+            :costPrice,
+            :amount,
+            :itemId,
+            :positionId,
+            :billId
         )
     """
     )
@@ -34,7 +58,8 @@ interface ImStockInitRepository : CrudRepository<ImStockInit, Long> {
         @Param("itemName") itemName: String?,
         @Param("isbn") isbn: String?,
         @Param("spec") spec: String?,
-        @Param("position") position: String?,
+        @Param("positionCode") positionCode: String?,
+        @Param("positionName") positionName: String?,
         @Param("fristInDate") fristInDate: String?,
         @Param("produceNum") produceNum: String?,
         @Param("quantity") quantity: String?,

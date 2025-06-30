@@ -70,8 +70,10 @@ data class ImSellBill(
     var tax: String? = null,
     @Column("F_TAX_AMOUNT")                                                          //税金
     var taxAmount: String? = null,
-    @Column("F_POSITION")                                                          //仓库货位
-    var position: String? = null,
+    @Column("F_POSITION_NAME")                                                          //仓库货位
+    var positionName: String? = null,
+    @Column("F_POSITION_CODE")                                                          //仓库货位
+    var positionCode: String? = null,
     @Column("F_COST_PRICE")                                                          //成本单价
     var costPrice: String? = null,
     @Column("F_COST_AMOUNT")                                                          //成本金额
@@ -81,5 +83,7 @@ data class ImSellBill(
     @Column("F_FIRST_IN_TIME")                                                          //首次入库日期
     var firstInTime: String? = null,
 
-    var id: String? = null
+    var id: String? = null,
+    @Column("F_DIRECTION")
+    var direction: String? = null //方向
 )

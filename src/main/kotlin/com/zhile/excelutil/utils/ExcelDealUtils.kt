@@ -47,7 +47,7 @@ class ExcelDealUtils {
 
             CellType.ERROR -> "#ERROR!"
 
-            else -> ""
+            else -> "未知类型"
         }
     }
 
@@ -62,11 +62,17 @@ class ExcelDealUtils {
         return when {
             // 1. 纯数字（整数或小数）
             isNumeric(value) -> {
-                val numValue = value.toDoubleOrNull()
-                if (numValue != null) {
-                    formatNumericValue(numValue)
+                // 正则表达式匹配整数或浮点数
+                // ^[-+]?        -> 匹配可选的正负号
+                // (\\d+)       -> 匹配一个或多个数字
+                // (\\.\\d+)?   -> 匹配可选的小数点和其后的一个或多个数字
+                // $            -> 匹配字符串结束
+                val numericRegex = "^[-+]?(\\d+(\\.\\d+)?|\\.\\d+)$".toRegex()
+
+                if (value.matches(numericRegex)) {
+                    value // 如果是数字字符串，直接返回原始字符串
                 } else {
-                    value
+                    value // 如果不是数字字符串，也返回原始字符串
                 }
             }
 

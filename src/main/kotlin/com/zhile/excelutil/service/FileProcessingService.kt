@@ -10,7 +10,7 @@ import com.zhile.excelutil.utils.FileUtils
 import kotlinx.coroutines.*
 import org.apache.poi.ss.usermodel.FormulaEvaluator
 import org.apache.poi.ss.usermodel.Row
-import org.apache.poi.ss.usermodel.WorkbookFactory
+import org.apache.poi.xssf.usermodel.XSSFWorkbook
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -313,9 +313,8 @@ class FileProcessingService(
             throw CancellationException("任务已取消")
         }
         try {
+            val workbook = XSSFWorkbook(file.inputStream())
 
-
-            val workbook = WorkbookFactory.create(file.inputStream())
             // 标记循环
             skipSheetHeaderCheck@ for (i in 0 until workbook.numberOfSheets) {
                 val sheet = workbook.getSheetAt(i)
@@ -339,7 +338,7 @@ class FileProcessingService(
                 val totalRows = sheet.lastRowNum + 1
                 val evaluator = workbook.creationHelper.createFormulaEvaluator()
 
-                logger.info("开始处理Excel文件: $fileName ($currentFileIndex/$totalFiles), 总行数: $totalRows")
+                logger.info("开始处理Excel文件: $fileName  -- ${sheet.sheetName}---- ($currentFileIndex/$totalFiles) , 总行数: $totalRows")
 
                 // 检查文件是否为空
                 if (totalRows <= 1) {
@@ -703,7 +702,7 @@ class FileProcessingService(
                                         "物品编码" -> imItem.code = cellValue
                                         "物品名称" -> imItem.name = cellValue
                                         "物品简称" -> imItem.abbr = cellValue
-                                        "条码" -> imItem.barCode = cellValue
+                                        "条形码" -> imItem.barCode = cellValue
                                         "定价" -> imItem.setPrice = cellValue
                                         "规格型号" -> imItem.spec = cellValue
                                         "出版类别" -> imItem.publishType = cellValue
@@ -735,7 +734,7 @@ class FileProcessingService(
                                         "选题类别" -> imItem.topicType = cellValue
                                         "装订方式" -> imItem.bindingType = cellValue
                                         "文种" -> imItem.language = cellValue
-                                        //                            "正文文字" -> imItem.bodyText = cellValue
+                                        "正文文字" -> imItem.noteLanguage = cellValue
                                         "内容简介" -> imItem.summary = cellValue
                                         "前言" -> imItem.perface = cellValue
                                         "目录" -> imItem.catalog = cellValue
@@ -743,6 +742,7 @@ class FileProcessingService(
                                         "摘要" -> imItem.bookAbstract = cellValue
                                         "CIP信息" -> imItem.cipInfo = cellValue
                                         "备注" -> imItem.remarks = cellValue
+                                        "CIP分类" -> imItem.cipType = cellValue
                                     }
 
                                 }
@@ -790,6 +790,7 @@ class FileProcessingService(
                                     bookAbstract = imItem.bookAbstract,
                                     cipInfo = imItem.cipInfo,
                                     remarks = imItem.remarks,
+                                    cipType = imItem.cipType,
                                     id = null,
                                     itemTypeId = null,
                                     editDepartmentId = null,
@@ -804,6 +805,8 @@ class FileProcessingService(
                                     unitId = null,
                                     bindingTypeId = null
                                 )
+
+
                             }
                             // 7.物品性质与科目中间表-->7.凭证科目配置表--工作簿1--财务分类总账科目  √√√√
                             ITEM_NATURE_ACCOUNT_HEADERS -> {
@@ -903,8 +906,9 @@ class FileProcessingService(
                                         "物品名称" -> imStockInit.itemName = cellValue
                                         "书号" -> imStockInit.isbn = cellValue
                                         "规格型号" -> imStockInit.spec = cellValue
-                                        "仓库" -> imStockInit.position = cellValue
-                                        "批次的首次入库时间" -> imStockInit.fristInDate = cellValue
+                                        "仓库编码" -> imStockInit.positionCode = cellValue
+                                        "仓库名称" -> imStockInit.positionName = cellValue
+                                        "首次入库日期" -> imStockInit.fristInDate = cellValue
                                         "批次（印次）" -> imStockInit.produceNum = cellValue
                                         "结存数量" -> imStockInit.quantity = cellValue
                                         "结存成本单价" -> imStockInit.costPrice = cellValue
@@ -916,7 +920,8 @@ class FileProcessingService(
                                     itemName = imStockInit.itemName,
                                     isbn = imStockInit.isbn,
                                     spec = imStockInit.spec,
-                                    position = imStockInit.position,
+                                    positionCode = imStockInit.positionCode,
+                                    positionName = imStockInit.positionName,
                                     fristInDate = imStockInit.fristInDate,
                                     produceNum = imStockInit.produceNum,
                                     quantity = imStockInit.quantity,
@@ -935,6 +940,7 @@ class FileProcessingService(
                                     val cellValue =
                                         excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                     when (headerName) {
+                                        "方向" -> imSellBill.direction = cellValue
                                         "销售订单号" -> imSellBill.orderBillNo = cellValue
                                         "订单日期" -> imSellBill.orderBillDate = cellValue
                                         "销售订单行号" -> imSellBill.orderBillRownum = cellValue
@@ -949,7 +955,7 @@ class FileProcessingService(
                                         "收货电话" -> imSellBill.receivingLinkmanTel = cellValue
                                         "订书依据" -> imSellBill.gist = cellValue
                                         "业务员编码" -> imSellBill.userCode = cellValue
-                                        "业务员名称" -> imSellBill.userName = cellValue
+                                        "业务员" -> imSellBill.userName = cellValue
                                         "部门编码" -> imSellBill.departmentCode = cellValue
                                         "部门名称" -> imSellBill.departmentName = cellValue
                                         "物品编码" -> imSellBill.itemCode = cellValue
@@ -963,7 +969,8 @@ class FileProcessingService(
                                         "未开票金额（实洋）" -> imSellBill.noInvoiceRealAmount = cellValue
                                         "税率(%)" -> imSellBill.tax = cellValue
                                         "税金(元)" -> imSellBill.taxAmount = cellValue
-                                        "仓库货位" -> imSellBill.position = cellValue
+                                        "仓库编码" -> imSellBill.positionCode = cellValue
+                                        "仓库名称" -> imSellBill.positionName = cellValue
                                         "成本单价" -> imSellBill.costPrice = cellValue
                                         "成本金额" -> imSellBill.costAmount = cellValue
                                         "备注" -> imSellBill.remarks = cellValue
@@ -971,6 +978,7 @@ class FileProcessingService(
                                     }
                                 }
                                 imSellBillRepository.insertSellBill(
+                                    direction = imSellBill.direction,
                                     orderBillNo = imSellBill.orderBillNo,
                                     orderBillDate = imSellBill.orderBillDate,
                                     orderBillRownum = imSellBill.orderBillRownum,
@@ -999,7 +1007,8 @@ class FileProcessingService(
                                     noInvoiceRealAmount = imSellBill.noInvoiceRealAmount,
                                     tax = imSellBill.tax,
                                     taxAmount = imSellBill.taxAmount,
-                                    position = imSellBill.position,
+                                    positionCode = imSellBill.positionCode,
+                                    positionName = imSellBill.positionName,
                                     costPrice = imSellBill.costPrice,
                                     costAmount = imSellBill.costAmount,
                                     remarks = imSellBill.remarks,
@@ -1008,6 +1017,24 @@ class FileProcessingService(
                             }
 
                             OTHERS_SKIP_HEADERS -> continue
+                        }                // 进度计算：10% - 90%
+                        val progress = 10 + ((i + 1) * 80 / totalRows)
+                        val message = "正在处理 ($currentFileIndex/$totalFiles) - 第 ${i + 1}/$totalRows 行"
+
+                        updateTaskStatus(taskId, "processing", progress, message)
+
+                        // 每处理5行或最后一行时发送进度更新
+                        if ((i + 1) % 5 == 0 || i == totalRows - 1) {
+                            webSocketHandler.sendToSession(
+                                sessionId, ProgressData(
+                                    type = "processing",
+                                    taskId = taskId,
+                                    fileName = fileName,
+                                    progress = progress,
+                                    status = "processing",
+                                    message = message
+                                )
+                            )
                         }
                     } catch (e: Exception) {
                         // 记录错误行的详细数据
@@ -1028,25 +1055,7 @@ class FileProcessingService(
                         throw Exception("处理第 ${i + 1} 行数据失败: ${e.message}", e)
                     }
                 }
-                // 进度计算：10% - 90%
-                val progress = 10 + ((i + 1) * 80 / totalRows)
-                val message = "正在处理 ($currentFileIndex/$totalFiles) - 第 ${i + 1}/$totalRows 行"
 
-                updateTaskStatus(taskId, "processing", progress, message)
-
-                // 每处理5行或最后一行时发送进度更新
-                if ((i + 1) % 5 == 0 || i == totalRows - 1) {
-                    webSocketHandler.sendToSession(
-                        sessionId, ProgressData(
-                            type = "processing",
-                            taskId = taskId,
-                            fileName = fileName,
-                            progress = progress,
-                            status = "processing",
-                            message = message
-                        )
-                    )
-                }
             }
             //处理完成根据表头调用存储过程
 //                when (matchedHeaderType) {
@@ -1440,6 +1449,7 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "摘要",
             "CIP信息",
             "备注"
+
         )
     ),
     ITEM_NATURE_ACCOUNT_HEADERS(
@@ -1486,16 +1496,19 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "物品名称",
             "书号",
             "规格型号",
-            "仓库",
-            "批次的首次入库时间",
+            "仓库编码",
+            "仓库名称",
+            "首次入库日期",
             "批次（印次）",
             "结存数量",
             "结存成本单价",
             "结存金额"
+
         )
     ),
     SELL_BILL_HEADERS(
         listOf(
+            "方向",
             "销售订单号",
             "订单日期",
             "销售订单行号",
@@ -1510,7 +1523,7 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "收货电话",
             "订书依据",
             "业务员编码",
-            "业务员名称",
+            "业务员",
             "部门编码",
             "部门名称",
             "物品编码",
@@ -1524,7 +1537,8 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "未开票金额（实洋）",
             "税率(%)",
             "税金(元)",
-            "仓库货位",
+            "仓库编码",
+            "仓库名称",
             "成本单价",
             "成本金额",
             "备注",

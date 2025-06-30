@@ -22,12 +22,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
-//    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-websocket")
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
-    implementation("org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.3") // 检查最新版本
-//    implementation ("org.springframework.boot:spring-boot-starter-security")
-
+    implementation("org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.3")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
@@ -35,21 +32,21 @@ dependencies {
     runtimeOnly("com.h2database:h2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
-    // Apache POI - 用于处理 .xls 和 .xlsx 文件
-    implementation("org.apache.poi:poi:5.4.1") // 用于 .xls 格式
-    implementation("org.apache.poi:poi-ooxml:5.4.1") // 用于 .xlsx 格式 (需要同时引入 poi)
-    // 注意：POI 5.x 版本中不需要单独引入 poi-ooxml-schemas，它已包含在 poi-ooxml 中
-    // 确保 xmlbeans 版本与 POI 5.4.1 兼容
-    implementation("org.apache.xmlbeans:xmlbeans:5.1.1") // Apache POI 5.4.1 推荐的 XMLBeans 版本
-
+    // >>>>>>> 关键修改开始 <<<<<<<
+    // 仅保留 xlsx-streamer，让它自动拉取兼容的 POI 版本 (通常是 5.2.3)
+    implementation("com.monitorjbl:xlsx-streamer:2.1.0")
+    // 移除显式声明的 poi 和 poi-ooxml 5.4.1，避免版本冲突
+    // implementation("org.apache.poi:poi:5.4.1")
+    // implementation("org.apache.poi:poi-ooxml:5.4.1")
+    // 移除显式声明的 xmlbeans，让 poi-ooxml 自动拉取其兼容的 xmlbeans
+    // implementation("org.apache.xmlbeans:xmlbeans:5.1.1")
+    // >>>>>>> 关键修改结束 <<<<<<<
 
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
 
-    // JSON处理
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin") // 再次声明，确保
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }

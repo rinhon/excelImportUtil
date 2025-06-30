@@ -13,8 +13,10 @@ data class ImStockInit(
     var isbn: String? = null,
     @Column("F_SPEC")
     var spec: String? = null,
-    @Column("F_POSITION")
-    var position: String? = null,
+    @Column("F_POSITION_CODE")
+    var positionCode: String? = null,
+    @Column("F_POSITION_NAME")
+    var positionName: String? = null,
     @Column("F_FRIST_IN_DATE")
     var fristInDate: String? = null,
     @Column("F_PRODUCE_NUM")

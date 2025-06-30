@@ -101,6 +101,8 @@ data class ImItem(
     var cipInfo: String? = null,  //CIP信息
     @Column("F_REMARKS")
     var remarks: String? = null,  //备注
+    @Column("F_CIP_TYPE")
+    var cipType: String? = null,  //备注
     @Column("F_ID")
     var id: Long? = null,
     @Column("F_ITEM_TYPE_ID")

@@ -28,7 +28,7 @@ interface ImItemRepository : CrudRepository<ImItem, Long> {
             F_DEPARTMENT_CODE, F_DEPARTMENT_NAME, F_DUTY_EDITOR_CODE, F_DUTY_EDITOR_NAME, F_PUBLISH_PERIOD, 
             F_PRINT_SHEET, F_FORMAT, F_FORMAT_SIZE, F_TOPIC_TYPE, F_BINDING_TYPE, 
             F_LANGUAGE, F_NOTE_LANGUAGE, F_SUMMARY, F_PERFACE, F_CATALOG, 
-            F_BOOK_REVIEW, F_BOOK_ABSTRACT, F_CIP_INFO, F_REMARKS, F_ID, 
+            F_BOOK_REVIEW, F_BOOK_ABSTRACT, F_CIP_INFO, F_REMARKS,F_CIP_TYPE, F_ID, 
             F_ITEM_TYPE_ID, F_EDIT_DEPARTMENT_ID, F_DUTY_EDITOR_ID, F_PUBLISH_PERIOD_ID, F_FORMAT_ID, 
             F_FORMAT_SIZE_ID, F_NATURE_ID, F_LANGUAGE_ID, F_NOTE_LANGUAGE_ID, F_PUBLISH_METHOD_ID, 
             F_UNIT_ID, F_BINDING_TYPE_ID
@@ -41,7 +41,7 @@ interface ImItemRepository : CrudRepository<ImItem, Long> {
             :departmentCode, :departmentName, :dutyEditorCode, :dutyEditorName, :publishPeriod, 
             :printSheet, :format, :formatSize, :topicType, :bindingType, 
             :language, :noteLanguage, :summary, :perface, :catalog, 
-            :bookReview, :bookAbstract, :cipInfo, :remarks, :id, 
+            :bookReview, :bookAbstract, :cipInfo, :remarks,:cipType, :id, 
             :itemTypeId, :editDepartmentId, :dutyEditorId, :publishPeriodId, :formatId, 
             :formatSizeId, :natureId, :languageId, :noteLanguageId, :publishMethodId, 
             :unitId, :bindingTypeId
@@ -92,6 +92,7 @@ interface ImItemRepository : CrudRepository<ImItem, Long> {
         @Param("bookAbstract") bookAbstract: String?,
         @Param("cipInfo") cipInfo: String?,
         @Param("remarks") remarks: String?,
+        @Param("cipType") cipType: String?,
         @Param("id") id: Long?,
         @Param("itemTypeId") itemTypeId: Long?,
         @Param("editDepartmentId") editDepartmentId: Long?,

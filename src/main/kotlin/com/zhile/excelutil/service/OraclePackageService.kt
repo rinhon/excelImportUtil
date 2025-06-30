@@ -4,7 +4,6 @@ import org.springframework.jdbc.core.SqlOutParameter
 import org.springframework.jdbc.core.SqlParameter
 import org.springframework.jdbc.core.simple.SimpleJdbcCall
 import org.springframework.stereotype.Service
-import java.math.BigDecimal
 import java.sql.Types
 import javax.sql.DataSource
 
@@ -28,8 +27,8 @@ class OraclePackageService(private val dataSource: DataSource) {
     // 无参数函数调用模板
     private fun callFunctionWithoutParams(functionName: String): Int {
         val jdbcCall = createJdbcCall(functionName)
-        val result: BigDecimal = jdbcCall.executeFunction(Int::class.java) as BigDecimal
-        return result.toInt()
+        val result: Int = jdbcCall.executeFunction(Int::class.java) ?: 1
+        return result
     }
 
     // 带organ_id参数的函数调用模板
@@ -39,11 +38,11 @@ class OraclePackageService(private val dataSource: DataSource) {
                 SqlParameter("P_ORGAN_ID", Types.NUMERIC)
             )
         }
-        val result: BigDecimal = jdbcCall.executeFunction(
+        val result: Int = jdbcCall.executeFunction(
             Int::class.java,
             mapOf("P_ORGAN_ID" to organId)
-        ) as BigDecimal
-        return result.toInt()
+        ) ?: 1
+        return result
     }
 
     // 1.1 部门 类型检查
