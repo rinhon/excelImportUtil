@@ -51,7 +51,10 @@ class FileProcessingService(
     private val imUserRoleRepository: ImUserRoleRepository,
     private val imPositionUserRepository: ImPositionUserRepository,
     private val excelDealUtils: ExcelDealUtils,
-    val imCustomerBusinessSetRepository: ImCustomerBusinessSetRepository
+    private val imCustomerBusinessSetRepository: ImCustomerBusinessSetRepository,
+    private val imSellInvoiceRepository: ImSellInvoiceRepository,
+    private val imSellReserveRepository: ImSellReserveRepository
+
 ) {
 
     /**
@@ -135,7 +138,7 @@ class FileProcessingService(
                 }
             }
             // 检查每个任务的状态，只对成功处理但未发送完成通知的任务发送通知
-            tasks.forEachIndexed { index, task ->
+            tasks.forEachIndexed { _, task ->
                 val taskId = task["taskId"]!!
                 val fileName = task["fileName"]!!
                 val currentStatus = taskStatus[taskId]
@@ -250,7 +253,7 @@ class FileProcessingService(
                 totalFiles,
                 webSocketHandler,
                 sessionId,
-                organId
+                organId,
             )
 
 
@@ -291,7 +294,7 @@ class FileProcessingService(
         totalFiles: Int,
         webSocketHandler: FileProcessingWebSocketHandler,
         sessionId: String,
-        organId: Long
+        organId: Long,
     ): Boolean {
         if (!file.exists()) {
             logger.error("未获取到$fileName ($currentFileIndex/$totalFiles)文件流")
@@ -352,13 +355,13 @@ class FileProcessingService(
                 var matchedHeaderInfo: Pair<ExcelHeaderData?, Map<String, Int>>? = null
                 var headerRowIndex = -1 // 记录头部所在的行索引
                 var headerMatch: Pair<ExcelHeaderData?, Map<String, Int>>?
-                findSheetHeader@ for (i in 0 until maxHeaderCheckRows) {
-                    val row = sheet.getRow(i)
+                findSheetHeader@ for (j in 0 until maxHeaderCheckRows) {
+                    val row = sheet.getRow(j)
                     headerMatch = excelDealUtils.isValidExcelHeaderRow(row, evaluator)
                     if (headerMatch != null) {
                         matchedHeaderInfo = headerMatch
-                        headerRowIndex = i
-                        logger.info("Excel文件: $fileName 头部在第 ${i + 1} 行找到，匹配类型: ${headerMatch.first?.name}")
+                        headerRowIndex = j
+                        logger.info("Excel文件: $fileName 头部在第 ${j + 1} 行找到，匹配类型: ${headerMatch.first?.name}")
                         break@findSheetHeader // 找到头部后，停止检测
                     }
                 }
@@ -397,20 +400,22 @@ class FileProcessingService(
                     IM_STOCK_INIT_HEADERS -> imStockInitRepository.deleteAllImStockInit()
                     SELL_BILL_HEADERS -> imSellBillRepository.deleteAllImSellBill()
                     CUSTOMER_BUSINESS_SET_HEADERS -> imCustomerBusinessSetRepository.deleteAllImCustomerBusinessSet()
+                    SELL_INVOICE_HEADERS -> imSellInvoiceRepository.deleteAllImSellInvoice()
+                    SELL_RESERVE_HEADERS -> imSellReserveRepository.deleteAllImSellReserve()
                     OTHERS_SKIP_HEADERS -> continue@skipSheetHeaderCheck
                     null -> continue@skipSheetHeaderCheck
                 }
                 //开始处理数据
-                dealData@ for (i in dataStartRowIndex until totalRows) {
-                    val row = sheet.getRow(i)
+                dealData@ for (j in dataStartRowIndex until totalRows) {
+                    val row = sheet.getRow(j)
                     // 检查行是否为空
                     if (row == null) {
                         continue@dealData
                     }
                     // 在处理每一行之前，添加检查行是否包含有效数据的逻辑
                     var hasData = false
-                    checkCell@ for (i in 0 until row.lastCellNum) {
-                        val cellValue = excelDealUtils.getCellValueAsString(row.getCell(i), evaluator)
+                    checkCell@ for (x in 0 until row.lastCellNum) {
+                        val cellValue = excelDealUtils.getCellValueAsString(row.getCell(x), evaluator)
                         if (cellValue.isNotEmpty()) {
                             hasData = true
                             break@checkCell
@@ -421,7 +426,7 @@ class FileProcessingService(
                     }
                     try {
                         // 记录开始处理的行号
-                        logger.debug("开始处理第 ${i + 1} 行数据")
+                        logger.debug("开始处理第 ${j + 1} 行数据")
                         when (matchedHeaderType) {
                             // 1.1部门 类型中间表-->部门设置表-工作簿2  XXXX字段对不上
                             DEPARTMENT_TYPE_HEADERS -> {
@@ -431,7 +436,7 @@ class FileProcessingService(
                                     val cellValue =
                                         excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
                                     when (headerName) {
-                                        "" -> imDepartmentType.seq = cellValue
+                                        "顺序号" -> imDepartmentType.seq = cellValue
                                         "部门类型" -> imDepartmentType.name = cellValue
                                         "备注" -> imDepartmentType.remarks = cellValue
                                     }
@@ -444,7 +449,7 @@ class FileProcessingService(
                                     code = null
                                 )
                             }
-                            // 1.2部门 数据中间表-->部门设置表-工作簿1  √√√√
+                            // 1.2部门 数据中间表-->部门设置表-工作簿1
                             DEPARTMENT_HEADERS -> {
                                 val imDepartment = ImDepartment()
                                 // 使用headerIndexMap来获取正确的列位置
@@ -1015,16 +1020,180 @@ class FileProcessingService(
                                     firstInTime = imSellBill.firstInTime
                                 )
                             }
+                            // 10.销售开票中间表 ->销售开票
+                            SELL_INVOICE_HEADERS -> {
+                                val imSellInvoice = ImSellInvoice()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "销售发票单号" -> imSellInvoice.invoiceNo = cellValue
+                                        "发票类型" -> imSellInvoice.invoiceType = cellValue
+                                        "发票号" -> imSellInvoice.invoiceNumber = cellValue
+                                        "销售发票-业务员编码" -> imSellInvoice.invoiceUserCode = cellValue
+                                        "销售发票-业务员名称" -> imSellInvoice.invoiceUserName = cellValue
+                                        "销售发票-部门编码" -> imSellInvoice.invoiceDepartmentCode = cellValue
+                                        "销售发票-部门名称" -> imSellInvoice.invoiceDepartmentName = cellValue
+                                        "开票日期" -> imSellInvoice.invoiceDate = cellValue
+                                        "开票单位" -> imSellInvoice.invoiceCustomer = cellValue
+                                        "销售发票-备注" -> imSellInvoice.remarks = cellValue
+                                        "调减金额" -> imSellInvoice.adjustAmount = cellValue
+                                        "调减后税金" -> imSellInvoice.adjustTaxAmount = cellValue
+                                        "销售订单号" -> imSellInvoice.orderBillNo = cellValue
+                                        "订单日期" -> imSellInvoice.orderBillDate = cellValue
+                                        "销售订单行号" -> imSellInvoice.orderBillRowNo = cellValue
+                                        "出库单据号" -> imSellInvoice.outBillNo = cellValue
+                                        "出库单据日期" -> imSellInvoice.outBillDate = cellValue
+                                        "出库单据行号" -> imSellInvoice.outBillRowNo = cellValue
+                                        "仓库编码" -> imSellInvoice.positionCode = cellValue
+                                        "仓库名称" -> imSellInvoice.positionName = cellValue
+                                        "客户编码" -> imSellInvoice.customerCode = cellValue
+                                        "客户名称" -> imSellInvoice.customerName = cellValue
+                                        "地区" -> imSellInvoice.area = cellValue
+                                        "收货地址" -> imSellInvoice.receiveAddress = cellValue
+                                        "收货人" -> imSellInvoice.receiveMan = cellValue
+                                        "收货电话" -> imSellInvoice.receivePhone = cellValue
+                                        "订书依据" -> imSellInvoice.gist = cellValue
+                                        "销售订单-业务员编码" -> imSellInvoice.orderUserCode = cellValue
+                                        "销售订单-业务员名称" -> imSellInvoice.orderUserName = cellValue
+                                        "销售订单-部门编码" -> imSellInvoice.orderDepartmentCode = cellValue
+                                        "销售订单-部门名称" -> imSellInvoice.orderDepartmentName = cellValue
+                                        "物品编码" -> imSellInvoice.itemCode = cellValue
+                                        "物品名称" -> imSellInvoice.itemName = cellValue
+                                        "批次" -> imSellInvoice.produceNum = cellValue
+                                        "定价" -> imSellInvoice.setPrice = cellValue
+                                        "计量单位" -> imSellInvoice.unit = cellValue
+                                        "开票未收款数量" -> imSellInvoice.quantity = cellValue
+                                        "开票未收款平均折扣" -> imSellInvoice.discount = cellValue
+                                        "开票未收款金额" -> imSellInvoice.amount = cellValue
+                                        "税率(%)" -> imSellInvoice.tax = cellValue
+                                        "税金(元)" -> imSellInvoice.taxAmount = cellValue
+                                        "成本单价" -> imSellInvoice.costPrice = cellValue
+                                        "成本金额" -> imSellInvoice.costAmount = cellValue
+                                        "记账日期" -> imSellInvoice.accountDate = cellValue
+                                        "调减后不含税金额" -> imSellInvoice.allocatedNoTaxAmount = cellValue
+                                    }
+                                }
+                                imSellInvoiceRepository.insertSellInvoice(
+                                    invoiceNo = imSellInvoice.invoiceNo,
+                                    invoiceType = imSellInvoice.invoiceType,
+                                    invoiceNumber = imSellInvoice.invoiceNumber,
+                                    invoiceUserCode = imSellInvoice.invoiceUserCode,
+                                    invoiceUserName = imSellInvoice.invoiceUserName,
+                                    invoiceDepartmentCode = imSellInvoice.invoiceDepartmentCode,
+                                    invoiceDepartmentName = imSellInvoice.invoiceDepartmentName,
+                                    invoiceDate = imSellInvoice.invoiceDate,
+                                    invoiceCustomer = imSellInvoice.invoiceCustomer,
+                                    remarks = imSellInvoice.remarks,
+                                    adjustAmount = imSellInvoice.adjustAmount,
+                                    adjustTaxAmount = imSellInvoice.adjustTaxAmount,
+                                    orderBillNo = imSellInvoice.orderBillNo,
+                                    orderBillDate = imSellInvoice.orderBillDate,
+                                    orderBillRowNo = imSellInvoice.orderBillRowNo,
+                                    outBillNo = imSellInvoice.outBillNo,
+                                    outBillDate = imSellInvoice.outBillDate,
+                                    outBillRowNo = imSellInvoice.outBillRowNo,
+                                    positionCode = imSellInvoice.positionCode,
+                                    positionName = imSellInvoice.positionName,
+                                    customerCode = imSellInvoice.customerCode,
+                                    customerName = imSellInvoice.customerName,
+                                    area = imSellInvoice.area,
+                                    receiveAddress = imSellInvoice.receiveAddress,
+                                    receiveMan = imSellInvoice.receiveMan,
+                                    receivePhone = imSellInvoice.receivePhone,
+                                    gist = imSellInvoice.gist,
+                                    orderUserCode = imSellInvoice.orderUserCode,
+                                    orderUserName = imSellInvoice.orderUserName,
+                                    orderDepartmentCode = imSellInvoice.orderDepartmentCode,
+                                    orderDepartmentName = imSellInvoice.orderDepartmentName,
+                                    itemCode = imSellInvoice.itemCode,
+                                    itemName = imSellInvoice.itemName,
+                                    produceNum = imSellInvoice.produceNum,
+                                    setPrice = imSellInvoice.setPrice,
+                                    unit = imSellInvoice.unit,
+                                    quantity = imSellInvoice.quantity,
+                                    discount = imSellInvoice.discount,
+                                    amount = imSellInvoice.amount,
+                                    tax = imSellInvoice.tax,
+                                    taxAmount = imSellInvoice.taxAmount,
+                                    costPrice = imSellInvoice.costPrice,
+                                    costAmount = imSellInvoice.costAmount,
+                                    accountDate = imSellInvoice.accountDate
+                                )
+                            }
+                            // 11. 销售预订单中间表 -> 销售预订单
+                            SELL_RESERVE_HEADERS -> {
+                                val imSellReserve = ImSellReserve()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "单据编号" -> imSellReserve.billNo = cellValue
+                                        "单位编码" -> imSellReserve.customerCode = cellValue
+                                        "客户单位" -> imSellReserve.customerName = cellValue
+                                        "业务日期" -> imSellReserve.date = cellValue
+                                        "业务部门编码" -> imSellReserve.departmentCode = cellValue
+                                        "业务部门" -> imSellReserve.departmentName = cellValue
+                                        "业务员编码" -> imSellReserve.userCode = cellValue
+                                        "业务员" -> imSellReserve.userName = cellValue
+                                        "是否开票" -> imSellReserve.isInvoice = cellValue
+                                        "发票类型" -> imSellReserve.invoiceType = cellValue
+                                        "发票号" -> imSellReserve.invoiceNo = cellValue
+                                        "开票日期" -> imSellReserve.invoiceDate = cellValue
+                                        "开票单位" -> imSellReserve.invoiceCustomer = cellValue
+                                        "合同号" -> imSellReserve.contractNo = cellValue
+                                        "收款日期" -> imSellReserve.receiveDate = cellValue
+                                        "物品编码" -> imSellReserve.itemCode = cellValue
+                                        "物品名称" -> imSellReserve.itemName = cellValue
+                                        "数量" -> imSellReserve.quantity = cellValue
+                                        "不含税金额" -> imSellReserve.amount = cellValue
+                                        "税率" -> imSellReserve.tax = cellValue
+                                        "税额" -> imSellReserve.taxAmount = cellValue
+                                        "金额合计" -> imSellReserve.realAmount = cellValue
+                                        "备注" -> imSellReserve.remarks = cellValue
+                                        "收款金额" -> imSellReserve.inAmount = cellValue
+                                    }
+                                }
+                                imSellReserveRepository.insertSellReserve(
+                                    billNo = imSellReserve.billNo,
+                                    customerCode = imSellReserve.customerCode,
+                                    customerName = imSellReserve.customerName,
+                                    date = imSellReserve.date,
+                                    departmentCode = imSellReserve.departmentCode,
+                                    departmentName = imSellReserve.departmentName,
+                                    userCode = imSellReserve.userCode,
+                                    userName = imSellReserve.userName,
+                                    isInvoice = imSellReserve.isInvoice,
+                                    invoiceType = imSellReserve.invoiceType,
+                                    invoiceNo = imSellReserve.invoiceNo,
+                                    invoiceDate = imSellReserve.invoiceDate,
+                                    invoiceCustomer = imSellReserve.invoiceCustomer,
+                                    contractNo = imSellReserve.contractNo,
+                                    receiveDate = imSellReserve.receiveDate,
+                                    itemCode = imSellReserve.itemCode,
+                                    itemName = imSellReserve.itemName,
+                                    topicApply = imSellReserve.topicApply,
+                                    quantity = imSellReserve.quantity,
+                                    amount = imSellReserve.amount,
+                                    tax = imSellReserve.tax,
+                                    taxAmount = imSellReserve.taxAmount,
+                                    realAmount = imSellReserve.realAmount,
+                                    remarks = imSellReserve.remarks,
+                                    inAmount = imSellReserve.inAmount
+                                )
+                            }
 
                             OTHERS_SKIP_HEADERS -> continue
                         }                // 进度计算：10% - 90%
-                        val progress = 10 + ((i + 1) * 80 / totalRows)
-                        val message = "正在处理 ($currentFileIndex/$totalFiles) - 第 ${i + 1}/$totalRows 行"
+                        val progress = 10 + ((j + 1) * 80 / totalRows)
+                        val message = "正在处理 ($currentFileIndex/$totalFiles) - 第 ${j + 1}/$totalRows 行"
 
                         updateTaskStatus(taskId, "processing", progress, message)
 
                         // 每处理5行或最后一行时发送进度更新
-                        if ((i + 1) % 5 == 0 || i == totalRows - 1) {
+                        if ((j + 1) % 5 == 0 || j == totalRows - 1) {
                             webSocketHandler.sendToSession(
                                 sessionId, ProgressData(
                                     type = "processing",
@@ -1035,6 +1204,7 @@ class FileProcessingService(
                                     message = message
                                 )
                             )
+
                         }
                     } catch (e: Exception) {
                         // 记录错误行的详细数据
@@ -1543,6 +1713,83 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "成本金额",
             "备注",
             "批次的首次入库日期"
+        )
+    ),
+    SELL_INVOICE_HEADERS(
+        listOf(
+            "销售发票单号",
+            "发票类型",
+            "发票号",
+            "销售发票-业务员编码",
+            "销售发票-业务员名称",
+            "销售发票-部门编码",
+            "销售发票-部门名称",
+            "开票日期",
+            "开票单位",
+            "销售发票-备注",
+            "调减金额",
+            "调减后税金",
+            "销售订单号",
+            "订单日期",
+            "销售订单行号",
+            "出库单据号",
+            "出库单据日期",
+            "出库单据行号",
+            "仓库编码",
+            "仓库名称",
+            "客户编码",
+            "客户名称",
+            "地区",
+            "收货地址",
+            "收货人",
+            "收货电话",
+            "订书依据",
+            "销售订单-业务员编码",
+            "销售订单-业务员名称",
+            "销售订单-部门编码",
+            "销售订单-部门名称",
+            "物品编码",
+            "物品名称",
+            "批次",
+            "定价",
+            "计量单位",
+            "开票未收款数量",
+            "开票未收款平均折扣",
+            "开票未收款金额",
+            "税率(%)",
+            "税金(元)",
+            "成本单价",
+            "成本金额",
+            "记账日期",
+            "调减后不含税金额"
+        )
+    ),
+    SELL_RESERVE_HEADERS(
+        listOf(
+            "单据编号",
+            "单位编码",
+            "客户单位",
+            "业务日期",
+            "业务部门编码",
+            "业务部门",
+            "业务员编码",
+            "业务员",
+            "是否开票",
+            "发票类型",
+            "发票号",
+            "开票日期",
+            "开票单位",
+            "合同号",
+            "收款日期",
+            "物品编码",
+            "物品名称",
+            "数量",
+            "不含税金额",
+            "税率",
+            "税额",
+            "金额合计",
+            "备注",
+            "收款金额"
         )
     ),
     OTHERS_SKIP_HEADERS(

@@ -22,7 +22,7 @@ class TemplateDownloadController(private val excelDownloadService: ExcelDownload
     @GetMapping("/downloadTemplate")
     fun downloadTemplate(): ResponseEntity<InputStreamResource> {
         val templateFileName = "template.xlsx"
-        val templatePath = "classpath:templates/$templateFileName" // 注意这里的路径
+//        val templatePath = "classpath:templates/$templateFileName" // 注意这里的路径
 
         return try {
             // 1. 获取文件资源
