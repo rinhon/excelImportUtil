@@ -94,7 +94,6 @@ class GlobalExceptionHandler {
         return ResponseEntity(errorResponse, HttpStatus.BAD_REQUEST)
     }
 
-    // 可以在此处添加更多特定的 @ExceptionHandler 来处理你可能遇到的其他异常
 
     /**
      * 定义一个标准的错误响应数据类，用于返回给客户端

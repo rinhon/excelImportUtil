@@ -53,7 +53,11 @@ class FileProcessingService(
     private val excelDealUtils: ExcelDealUtils,
     private val imCustomerBusinessSetRepository: ImCustomerBusinessSetRepository,
     private val imSellInvoiceRepository: ImSellInvoiceRepository,
-    private val imSellReserveRepository: ImSellReserveRepository
+    private val imSellReserveRepository: ImSellReserveRepository,
+    private val imPurchaseInvoiceRepository: ImPurchaseInvoiceRepository,
+    private val imTopicRecordRepository: ImTopicRecordRepository,
+    private val imTopicRecordAuthorRepository: ImTopicRecordAuthorRepository,
+    private val imFeeBillRepository: ImFeeBillRepository
 
 ) {
 
@@ -341,7 +345,7 @@ class FileProcessingService(
                 val totalRows = sheet.lastRowNum + 1
                 val evaluator = workbook.creationHelper.createFormulaEvaluator()
 
-                logger.info("开始处理Excel文件: $fileName  -- ${sheet.sheetName}---- ($currentFileIndex/$totalFiles) , 总行数: $totalRows")
+                logger.info("开始处理Excel文件: {{$fileName}}{{ ${sheet.sheetName}}}($currentFileIndex/$totalFiles) , 总行数: $totalRows")
 
                 // 检查文件是否为空
                 if (totalRows <= 1) {
@@ -361,7 +365,7 @@ class FileProcessingService(
                     if (headerMatch != null) {
                         matchedHeaderInfo = headerMatch
                         headerRowIndex = j
-                        logger.info("Excel文件: $fileName 头部在第 ${j + 1} 行找到，匹配类型: ${headerMatch.first?.name}")
+                        logger.info("Excel文件:{{ $fileName}} 头部在第 {{${j + 1}}}行找到，匹配类型:{{${headerMatch.first?.name}}}")
                         break@findSheetHeader // 找到头部后，停止检测
                     }
                 }
@@ -402,6 +406,10 @@ class FileProcessingService(
                     CUSTOMER_BUSINESS_SET_HEADERS -> imCustomerBusinessSetRepository.deleteAllImCustomerBusinessSet()
                     SELL_INVOICE_HEADERS -> imSellInvoiceRepository.deleteAllImSellInvoice()
                     SELL_RESERVE_HEADERS -> imSellReserveRepository.deleteAllImSellReserve()
+                    PURCHASE_INVOICE_HEADERS -> imPurchaseInvoiceRepository.deleteAllPurchaseInvoice()
+                    TOPIC_RECORD_HEADERS -> imTopicRecordRepository.deleteAllImTopicRecord()
+                    TOPIC_RECORD_AUTHOR_HEADERS -> imTopicRecordAuthorRepository.deleteAllTopicRecordAuthor()
+                    FEE_BILL_HEADERS -> imFeeBillRepository.deleteAllFeeBill()
                     OTHERS_SKIP_HEADERS -> continue@skipSheetHeaderCheck
                     null -> continue@skipSheetHeaderCheck
                 }
@@ -1184,8 +1192,451 @@ class FileProcessingService(
                                     inAmount = imSellReserve.inAmount
                                 )
                             }
+                            // 12. 采购发票中间表-> 采购发票未付款
+                            PURCHASE_INVOICE_HEADERS -> {
+                                val imPurchaseInvoice = ImPurchaseInvoice()
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "方向" -> imPurchaseInvoice.remarks = cellValue
+                                        "采购订单号" -> imPurchaseInvoice.invoiceBillNo = cellValue
+                                        "采购订单日期" -> imPurchaseInvoice.invoiceDate = cellValue
+                                        "采购订单行号" -> imPurchaseInvoice.invoiceType = cellValue
+                                        "入库单据号" -> imPurchaseInvoice.remarks = cellValue
+                                        "入库单据日期" -> imPurchaseInvoice.remarks = cellValue
+                                        "入库单据行号" -> imPurchaseInvoice.remarks = cellValue
+                                        "供应商编码" -> imPurchaseInvoice.remarks = cellValue
+                                        "供应商名称" -> imPurchaseInvoice.remarks = cellValue
+                                        "地区" -> imPurchaseInvoice.remarks = cellValue
+                                        "发货地址" -> imPurchaseInvoice.remarks = cellValue
+                                        "发货人" -> imPurchaseInvoice.remarks = cellValue
+                                        "发货电话" -> imPurchaseInvoice.remarks = cellValue
+                                        "订书依据" -> imPurchaseInvoice.remarks = cellValue
+                                        "业务员编码" -> imPurchaseInvoice.remarks = cellValue
+                                        "业务员名称" -> imPurchaseInvoice.remarks = cellValue
+                                        "部门编码" -> imPurchaseInvoice.remarks = cellValue
+                                        "部门名称" -> imPurchaseInvoice.remarks = cellValue
+                                        "物品编码" -> imPurchaseInvoice.remarks = cellValue
+                                        "物品名称" -> imPurchaseInvoice.remarks = cellValue
+                                        "批次" -> imPurchaseInvoice.remarks = cellValue
+                                        "定价" -> imPurchaseInvoice.remarks = cellValue
+                                        "计量单位" -> imPurchaseInvoice.remarks = cellValue
+                                        "未开票数量" -> imPurchaseInvoice.remarks = cellValue
+                                        "未开票平均折扣" -> imPurchaseInvoice.remarks = cellValue
+                                        "未开票金额" -> imPurchaseInvoice.remarks = cellValue
+                                        "税率" -> imPurchaseInvoice.remarks = cellValue
+                                        "税金" -> imPurchaseInvoice.remarks = cellValue
+                                        "仓库编码" -> imPurchaseInvoice.remarks = cellValue
+                                        "仓库名称" -> imPurchaseInvoice.remarks = cellValue
+                                        "备注" -> imPurchaseInvoice.remarks = cellValue
+                                    }
+                                }
+                            }
+                            // 16.1.1 选题申报-书稿三审-发稿单-书号CIP申请
+                            TOPIC_RECORD_HEADERS -> {
+                                val imTopicRecord = ImTopicRecord()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "选题单号" -> imTopicRecord.topicRecordBillNo = cellValue
+                                        "物品编码" -> imTopicRecord.itemCode = cellValue
+                                        "物品名称(书名)" -> imTopicRecord.bookName = cellValue
+                                        "责任编辑编码" -> imTopicRecord.dutyEditorCode = cellValue
+                                        "责任编辑名称" -> imTopicRecord.dutyEditorName = cellValue
+                                        "其他编辑" -> imTopicRecord.otherDutyEditor = cellValue
+                                        "业务部门编码" -> imTopicRecord.topicRecordDepartmentCode = cellValue
+                                        "业务部门名称" -> imTopicRecord.topicRecordDepartmentName = cellValue
+                                        "业务日期" -> imTopicRecord.topicRecordBillDate = cellValue
+                                        "分卷册名" -> imTopicRecord.partBookName = cellValue
+                                        "外文书名" -> imTopicRecord.foreignName = cellValue
+                                        "副书名" -> imTopicRecord.viceBookName = cellValue
+                                        "丛（套）书名" -> imTopicRecord.seriesName = cellValue
+                                        "中图分类" -> imTopicRecord.sinoBookType = cellValue
+                                        "正文文种" -> imTopicRecord.noteLanguage = cellValue
+                                        "选题申报单正文文字" -> imTopicRecord.language = cellValue
+                                        "主要作者" -> imTopicRecord.mainAuthor = cellValue
+                                        "书稿字数(千字)" -> imTopicRecord.wordCount = cellValue
+                                        "出版类别" -> imTopicRecord.publishType = cellValue
+                                        "经营方式" -> imTopicRecord.publishMethod = cellValue
+                                        "版次时间-年月" -> imTopicRecord.editionYearMonth = cellValue
+                                        "版次" -> imTopicRecord.editionNo = cellValue
+                                        "印次时间-年月" -> imTopicRecord.printingYearMonth = cellValue
+                                        "印次" -> imTopicRecord.printingNo = cellValue
+                                        "开本尺寸名称" -> imTopicRecord.bookFormatSize = cellValue
+                                        "开本别名" -> imTopicRecord.bookFormat = cellValue
+                                        "印张" -> imTopicRecord.sheetCount = cellValue
+                                        "装订方式" -> imTopicRecord.bindingType = cellValue
+                                        "印数(册)" -> imTopicRecord.printCount = cellValue
+                                        "累计印数(册)" -> imTopicRecord.printCountTotal = cellValue
+                                        "定价(元)" -> imTopicRecord.setPrice = cellValue
+                                        "成品尺寸(mm)-长" -> imTopicRecord.bookHeight = cellValue
+                                        "成品尺寸(mm)-宽" -> imTopicRecord.bookWidth = cellValue
+                                        "内容简介（要求200-1000字）" -> imTopicRecord.summary = cellValue
+                                        "目标读者" -> imTopicRecord.targetReader = cellValue
+                                        "本社同类书比较" -> imTopicRecord.pressSimilarCompare = cellValue
+                                        "国内同类书比较" -> imTopicRecord.nationSimilarCompare = cellValue
+                                        "营销策略" -> imTopicRecord.sellPolicy = cellValue
+                                        "渠道分析" -> imTopicRecord.canalAnaly = cellValue
+                                        "重要选题类型" -> imTopicRecord.importantRecordType = cellValue
+                                        "合作方" -> imTopicRecord.partner = cellValue
+                                        "是否虚拟选题" -> imTopicRecord.virtualBook = cellValue
+                                        "是否翻译作品" -> imTopicRecord.translateBook = cellValue
+                                        "是否地图" -> imTopicRecord.map = cellValue
+                                        "选题年度" -> imTopicRecord.topicYear = cellValue
+                                        "选题批次" -> imTopicRecord.produceNum = cellValue
+                                        "是否原创" -> imTopicRecord.topicOriginal = cellValue
+                                        "是否公版" -> imTopicRecord.publicBook = cellValue
+                                        "是否中小学教材" -> imTopicRecord.primaryTextbook = cellValue
+                                        "是否中小学教辅" -> imTopicRecord.teachingAuxiliary = cellValue
+                                        "是否高校教材" -> imTopicRecord.universityTextbox = cellValue
+                                        "是否引进版图书" -> imTopicRecord.introducingBook = cellValue
+                                        "引进版图书原书名" -> imTopicRecord.introducingBookName = cellValue
+                                        "引进版图书原出版地" -> imTopicRecord.introducingBookAddress = cellValue
+                                        "引进版图书原出版者" -> imTopicRecord.introducingBookAuthor = cellValue
+                                        "引进版图书外版ISBN" -> imTopicRecord.introducingBookIsbn = cellValue
+                                        "引进方式" -> imTopicRecord.introducingBookWay = cellValue
+                                        "版权登记号" -> imTopicRecord.introducingBookNo = cellValue
+                                        "预计来稿时间" -> imTopicRecord.expectSubmitTime = cellValue
+                                        "正文文字" -> imTopicRecord.textLanguage = cellValue
+                                        "发行范围" -> imTopicRecord.publishRange = cellValue
+                                        "载体形式" -> imTopicRecord.carryForm = cellValue
+                                        "图书类型" -> imTopicRecord.bookType = cellValue
+                                        "选题申报单-备注" -> imTopicRecord.topicRecordRemarks = cellValue
+                                        "三审单号" -> imTopicRecord.thirdTrialBillNo = cellValue
+                                        "业务日期(三审)" -> imTopicRecord.thirdTrialBillDate = cellValue
+                                        "业务部门编码(三审)" -> imTopicRecord.thirdTrialDepartmentCode = cellValue
+                                        "业务部门名称(三审)" -> imTopicRecord.thirdTrialDepartmentName = cellValue
+                                        "业务员编码(三审)" -> imTopicRecord.thirdTrialUserCode = cellValue
+                                        "业务员名称(三审)" -> imTopicRecord.thirdTrialUserName = cellValue
+                                        "选题号" -> imTopicRecord.topicNumber = cellValue
+                                        "初审人编码" -> imTopicRecord.firstTrialPersonCode = cellValue
+                                        "初审人名称" -> imTopicRecord.firstTrialPersonName = cellValue
+                                        "初审日期" -> imTopicRecord.firstTrialDate = cellValue
+                                        "初审意见" -> imTopicRecord.firstTrialOpinion = cellValue
+                                        "复审人编码" -> imTopicRecord.secondTrialPersonCode = cellValue
+                                        "复审人名称" -> imTopicRecord.secondTrialPersonName = cellValue
+                                        "复审日期" -> imTopicRecord.secondTrialDate = cellValue
+                                        "复审意见" -> imTopicRecord.secondTrialOpinion = cellValue
+                                        "终审人编码" -> imTopicRecord.thirdTrialPersonCode = cellValue
+                                        "终审人名称" -> imTopicRecord.thirdTrialPersonName = cellValue
+                                        "终审日期" -> imTopicRecord.thirdTrialDate = cellValue
+                                        "终审意见" -> imTopicRecord.thirdTrialOpinion = cellValue
+                                        "发稿单号" -> imTopicRecord.publishBillNo = cellValue
+                                        "业务日期(发稿)" -> imTopicRecord.publishBillDate = cellValue
+                                        "发稿单印次年月" -> imTopicRecord.publishPrintingYearMonth = cellValue
+                                        "发稿单印次" -> imTopicRecord.publishPrintingNo = cellValue
+                                        "发稿单业务类型" -> imTopicRecord.publishBusinessType = cellValue
+                                        "业务部门编码(发稿)" -> imTopicRecord.publishDepartmentCode = cellValue
+                                        "业务部门名称(发稿)" -> imTopicRecord.publishDepartmentName = cellValue
+                                        "业务员编码(发稿)" -> imTopicRecord.publishUserCode = cellValue
+                                        "业务员名称(发稿)" -> imTopicRecord.publishUserName = cellValue
+                                        "出版期间" -> imTopicRecord.publishPeriod = cellValue
+                                        "重印物品书号" -> imTopicRecord.reprintItemIsbn = cellValue
+                                        "重印物品名称" -> imTopicRecord.reprintItemName = cellValue
+                                        "书号和CIP发放单号" -> imTopicRecord.bookNumApplyBillNo = cellValue
+                                        "业务日期(书号申请)" -> imTopicRecord.bookNumBillDate = cellValue
+                                        "业务部门编码(书号申请)" -> imTopicRecord.bookNumDepartmentCode = cellValue
+                                        "业务部门名称(书号申请)" -> imTopicRecord.bookNumDepartmentName = cellValue
+                                        "业务员编码(书号申请)" -> imTopicRecord.bookNumUserCode = cellValue
+                                        "业务员名称(书号申请)" -> imTopicRecord.bookNumUserName = cellValue
+                                        "书号" -> imTopicRecord.isbn = cellValue
+                                        "CIP信息" -> imTopicRecord.cipInfo = cellValue
+                                        "附加码" -> imTopicRecord.extraCode = cellValue
+                                        "cip分类" -> imTopicRecord.cipType = cellValue
+                                    }
+                                }
 
-                            OTHERS_SKIP_HEADERS -> continue
+                                imTopicRecordRepository.insertTopicRecord(
+                                    topicRecordBillNo = imTopicRecord.topicRecordBillNo,
+                                    itemCode = imTopicRecord.itemCode,
+                                    bookName = imTopicRecord.bookName,
+                                    dutyEditorCode = imTopicRecord.dutyEditorCode,
+                                    dutyEditorName = imTopicRecord.dutyEditorName,
+                                    otherDutyEditor = imTopicRecord.otherDutyEditor,
+                                    topicRecordDepartmentCode = imTopicRecord.topicRecordDepartmentCode,
+                                    topicRecordDepartmentName = imTopicRecord.topicRecordDepartmentName,
+                                    topicRecordBillDate = imTopicRecord.topicRecordBillDate,
+                                    partBookName = imTopicRecord.partBookName,
+                                    foreignName = imTopicRecord.foreignName,
+                                    viceBookName = imTopicRecord.viceBookName,
+                                    seriesName = imTopicRecord.seriesName,
+                                    sinoBookType = imTopicRecord.sinoBookType,
+                                    noteLanguage = imTopicRecord.noteLanguage,
+                                    language = imTopicRecord.language,
+                                    mainAuthor = imTopicRecord.mainAuthor,
+                                    wordCount = imTopicRecord.wordCount,
+                                    publishType = imTopicRecord.publishType,
+                                    publishMethod = imTopicRecord.publishMethod,
+                                    editionYearMonth = imTopicRecord.editionYearMonth,
+                                    editionNo = imTopicRecord.editionNo,
+                                    printingYearMonth = imTopicRecord.printingYearMonth,
+                                    printingNo = imTopicRecord.printingNo,
+                                    bookFormatSize = imTopicRecord.bookFormatSize,
+                                    bookFormat = imTopicRecord.bookFormat,
+                                    sheetCount = imTopicRecord.sheetCount,
+                                    bindingType = imTopicRecord.bindingType,
+                                    printCount = imTopicRecord.printCount,
+                                    printCountTotal = imTopicRecord.printCountTotal,
+                                    setPrice = imTopicRecord.setPrice,
+                                    bookHeight = imTopicRecord.bookHeight,
+                                    bookWidth = imTopicRecord.bookWidth,
+                                    summary = imTopicRecord.summary,
+                                    targetReader = imTopicRecord.targetReader,
+                                    pressSimilarCompare = imTopicRecord.pressSimilarCompare,
+                                    nationSimilarCompare = imTopicRecord.nationSimilarCompare,
+                                    sellPolicy = imTopicRecord.sellPolicy,
+                                    canalAnaly = imTopicRecord.canalAnaly,
+                                    importantRecordType = imTopicRecord.importantRecordType,
+                                    partner = imTopicRecord.partner,
+                                    virtualBook = imTopicRecord.virtualBook,
+                                    translateBook = imTopicRecord.translateBook,
+                                    map = imTopicRecord.map,
+                                    topicYear = imTopicRecord.topicYear,
+                                    produceNum = imTopicRecord.produceNum,
+                                    topicOriginal = imTopicRecord.topicOriginal,
+                                    publicBook = imTopicRecord.publicBook,
+                                    primaryTextbook = imTopicRecord.primaryTextbook,
+                                    teachingAuxiliary = imTopicRecord.teachingAuxiliary,
+                                    universityTextbox = imTopicRecord.universityTextbox,
+                                    introducingBook = imTopicRecord.introducingBook,
+                                    introducingBookName = imTopicRecord.introducingBookName,
+                                    introducingBookAddress = imTopicRecord.introducingBookAddress,
+                                    introducingBookAuthor = imTopicRecord.introducingBookAuthor,
+                                    introducingBookIsbn = imTopicRecord.introducingBookIsbn,
+                                    introducingBookWay = imTopicRecord.introducingBookWay,
+                                    introducingBookNo = imTopicRecord.introducingBookNo,
+                                    expectSubmitTime = imTopicRecord.expectSubmitTime,
+                                    textLanguage = imTopicRecord.textLanguage,
+                                    publishRange = imTopicRecord.publishRange,
+                                    carryForm = imTopicRecord.carryForm,
+                                    bookType = imTopicRecord.bookType,
+                                    topicRecordRemarks = imTopicRecord.topicRecordRemarks,
+                                    thirdTrialBillNo = imTopicRecord.thirdTrialBillNo,
+                                    thirdTrialBillDate = imTopicRecord.thirdTrialBillDate,
+                                    thirdTrialDepartmentCode = imTopicRecord.thirdTrialDepartmentCode,
+                                    thirdTrialDepartmentName = imTopicRecord.thirdTrialDepartmentName,
+                                    thirdTrialUserCode = imTopicRecord.thirdTrialUserCode,
+                                    thirdTrialUserName = imTopicRecord.thirdTrialUserName,
+                                    topicNumber = imTopicRecord.topicNumber,
+                                    firstTrialPersonCode = imTopicRecord.firstTrialPersonCode,
+                                    firstTrialPersonName = imTopicRecord.firstTrialPersonName,
+                                    firstTrialDate = imTopicRecord.firstTrialDate,
+                                    firstTrialOpinion = imTopicRecord.firstTrialOpinion,
+                                    secondTrialPersonCode = imTopicRecord.secondTrialPersonCode,
+                                    secondTrialPersonName = imTopicRecord.secondTrialPersonName,
+                                    secondTrialDate = imTopicRecord.secondTrialDate,
+                                    secondTrialOpinion = imTopicRecord.secondTrialOpinion,
+                                    thirdTrialPersonCode = imTopicRecord.thirdTrialPersonCode,
+                                    thirdTrialPersonName = imTopicRecord.thirdTrialPersonName,
+                                    thirdTrialDate = imTopicRecord.thirdTrialDate,
+                                    thirdTrialOpinion = imTopicRecord.thirdTrialOpinion,
+                                    publishBillNo = imTopicRecord.publishBillNo,
+                                    publishBillDate = imTopicRecord.publishBillDate,
+                                    publishPrintingYearMonth = imTopicRecord.publishPrintingYearMonth,
+                                    publishPrintingNo = imTopicRecord.publishPrintingNo,
+                                    publishBusinessType = imTopicRecord.publishBusinessType,
+                                    publishDepartmentCode = imTopicRecord.publishDepartmentCode,
+                                    publishDepartmentName = imTopicRecord.publishDepartmentName,
+                                    publishUserCode = imTopicRecord.publishUserCode,
+                                    publishUserName = imTopicRecord.publishUserName,
+                                    publishPeriod = imTopicRecord.publishPeriod,
+                                    reprintItemIsbn = imTopicRecord.reprintItemIsbn,
+                                    reprintItemName = imTopicRecord.reprintItemName,
+                                    bookNumApplyBillNo = imTopicRecord.bookNumApplyBillNo,
+                                    bookNumBillDate = imTopicRecord.bookNumBillDate,
+                                    bookNumDepartmentCode = imTopicRecord.bookNumDepartmentCode,
+                                    bookNumDepartmentName = imTopicRecord.bookNumDepartmentName,
+                                    bookNumUserCode = imTopicRecord.bookNumUserCode,
+                                    bookNumUserName = imTopicRecord.bookNumUserName,
+                                    isbn = imTopicRecord.isbn,
+                                    topicRecordDepartmentId = imTopicRecord.topicRecordDepartmentId,
+                                    cipInfo = imTopicRecord.cipInfo,
+                                    extraCode = imTopicRecord.extraCode,
+                                    cipType = imTopicRecord.cipType,
+                                    bookNumSinoBookType = imTopicRecord.bookNumSinoBookType,
+                                    organId = organId
+                                )
+                            }
+                            // 16.1.2 作者信息
+                            TOPIC_RECORD_AUTHOR_HEADERS -> {
+                                val imTopicRecordAuthor = ImTopicRecordAuthor()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "选题单号" -> imTopicRecordAuthor.topicRecordBillNo = cellValue
+                                        "书名" -> imTopicRecordAuthor.bookName = cellValue
+                                        "作者编码" -> imTopicRecordAuthor.authorCode = cellValue
+                                        "作者姓名" -> imTopicRecordAuthor.authorName = cellValue
+                                        "主要作者" -> imTopicRecordAuthor.mainAuthor = cellValue
+                                        "著作方式" -> imTopicRecordAuthor.writeType = cellValue
+                                        "所在单位" -> imTopicRecordAuthor.authorCompany = cellValue
+                                        "职称" -> imTopicRecordAuthor.authorTitle = cellValue
+                                        "作者简介" -> imTopicRecordAuthor.majorWorks = cellValue
+                                        "作者背景审查情况" -> imTopicRecordAuthor.backgroundDetail = cellValue
+                                        "作者已出版书市场情况" -> imTopicRecordAuthor.marketConditions = cellValue
+                                        "备注" -> imTopicRecordAuthor.remarks = cellValue
+                                        "国籍" -> imTopicRecordAuthor.nation = cellValue
+                                        "朝代" -> imTopicRecordAuthor.dynasty = cellValue
+
+                                    }
+                                }
+                                imTopicRecordAuthorRepository.insertTopicRecordAuthor(
+                                    topicRecordBillNo = imTopicRecordAuthor.topicRecordBillNo,
+                                    bookName = imTopicRecordAuthor.bookName,
+                                    authorCode = imTopicRecordAuthor.authorCode,
+                                    authorName = imTopicRecordAuthor.authorName,
+                                    mainAuthor = imTopicRecordAuthor.mainAuthor,
+                                    writeType = imTopicRecordAuthor.writeType,
+                                    authorCompany = imTopicRecordAuthor.authorCompany,
+                                    authorTitle = imTopicRecordAuthor.authorTitle,
+                                    majorWorks = imTopicRecordAuthor.majorWorks,
+                                    backgroundDetail = imTopicRecordAuthor.backgroundDetail,
+                                    marketConditions = imTopicRecordAuthor.marketConditions,
+                                    remarks = imTopicRecordAuthor.remarks,
+                                    nation = imTopicRecordAuthor.nation,
+                                    dynasty = imTopicRecordAuthor.dynasty,
+                                    organId = organId
+                                )
+                            }
+                            // 16.2费用预估-结算-付款
+                            FEE_BILL_HEADERS -> {
+                                val imFeeBill = ImFeeBill()
+                                // 使用headerIndexMap来获取正确的列位置
+                                headerIndexMap.forEach { (headerName, columnIndex) ->
+                                    val cellValue =
+                                        excelDealUtils.getCellValueAsString(row.getCell(columnIndex), evaluator)
+                                    when (headerName) {
+                                        "物品编码" -> imFeeBill.itemCode = cellValue
+                                        "物品名称" -> imFeeBill.itemName = cellValue
+                                        "印次" -> imFeeBill.printingNo = cellValue
+                                        "预估单号" -> imFeeBill.feeEstimateBillNo = cellValue
+                                        "预估单行号" -> imFeeBill.feeEstimateRowNum = cellValue
+                                        "费用项目" -> imFeeBill.costItem = cellValue
+                                        "往来单位编码" -> imFeeBill.customerCode = cellValue
+                                        "往来单位" -> imFeeBill.customerName = cellValue
+                                        "业务日期" -> imFeeBill.estimateDate = cellValue
+                                        "记账日期" -> imFeeBill.estimateVoucherDate = cellValue
+                                        "业务部门编码" -> imFeeBill.estimateDepartmentCode = cellValue
+                                        "业务部门" -> imFeeBill.estimateDepartmentName = cellValue
+                                        "业务员编码" -> imFeeBill.estimateUserCode = cellValue
+                                        "业务员" -> imFeeBill.estimateUserName = cellValue
+                                        "自备材料金额" -> imFeeBill.selfMaterialAmount = cellValue
+                                        "预估金额(元)" -> imFeeBill.estimateAmount = cellValue
+                                        "税率(%)" -> imFeeBill.estimateTax = cellValue
+                                        "暂估税金(元)" -> imFeeBill.estimateTaxAmount = cellValue
+                                        "结算单号" -> imFeeBill.feeSettleBillNo = cellValue
+                                        "结算单行号" -> imFeeBill.feeSettleRowNum = cellValue
+                                        "往来单位编码（结算）" -> imFeeBill.settleCustomerCode = cellValue
+                                        "往来单位（结算）" -> imFeeBill.settleCustomerName = cellValue
+                                        "业务日期（结算）" -> imFeeBill.settleDate = cellValue
+                                        "记账日期（结算）" -> imFeeBill.settleVoucherDate = cellValue
+                                        "业务部门编码（结算）" -> imFeeBill.settleDepartmentCode = cellValue
+                                        "业务部门（结算）" -> imFeeBill.settleDepartmentName = cellValue
+                                        "业务员编码（结算）" -> imFeeBill.settleUserCode = cellValue
+                                        "业务员（结算）" -> imFeeBill.settleUserName = cellValue
+                                        "本次结算金额(元)" -> imFeeBill.settleAmount = cellValue
+                                        "税率(%)（结算）" -> imFeeBill.settleTax = cellValue
+                                        "税金(元)" -> imFeeBill.settleTaxAmount = cellValue
+                                        "增值税(元）" -> imFeeBill.addValueTax = cellValue
+                                        "城建税(元）" -> imFeeBill.urbanConstructTax = cellValue
+                                        "教育费附加税(元）" -> imFeeBill.educateAdditionTax = cellValue
+                                        "地方教育附加税(元)" -> imFeeBill.localEducateAdditionTax = cellValue
+                                        "应纳税所得额(元）" -> imFeeBill.taxableIncome = cellValue
+                                        "其他扣款金额(元）" -> imFeeBill.otherAmount = cellValue
+                                        "扣款原因" -> imFeeBill.otherReason = cellValue
+                                        "发票类型" -> imFeeBill.invoiceType = cellValue
+                                        "发票号" -> imFeeBill.invoiceNumber = cellValue
+                                        "是否结算完成" -> imFeeBill.settleCompletion = cellValue
+                                        "开户行" -> imFeeBill.customerAccountBankName = cellValue
+                                        "开户行分行" -> imFeeBill.customerBankName = cellValue
+                                        "账户名称" -> imFeeBill.customerAccountName = cellValue
+                                        "银行账号（结算）" -> imFeeBill.customerAccountNo = cellValue
+                                        "付款方开户银行（结算）" -> imFeeBill.organBankName = cellValue
+                                        "付款方银行账号（结算）" -> imFeeBill.organAccountNo = cellValue
+                                        "备注" -> imFeeBill.remarks = cellValue
+                                        "付款单号" -> imFeeBill.payBillNo = cellValue
+                                        "付款单行号" -> imFeeBill.payRowNum = cellValue
+                                        "业务日期（付款）" -> imFeeBill.payDate = cellValue
+                                        "记账日期（付款）" -> imFeeBill.payVoucherDate = cellValue
+                                        "业务部门编码（付款）" -> imFeeBill.payDepartmentCode = cellValue
+                                        "业务部门（付款）" -> imFeeBill.payDepartmentName = cellValue
+                                        "业务员编码（付款）" -> imFeeBill.payUserCode = cellValue
+                                        "业务员（付款）" -> imFeeBill.payUserName = cellValue
+                                        "本次支付金额(元)" -> imFeeBill.payAmount = cellValue
+                                        "税金(元)（付款）" -> imFeeBill.payTaxAmount = cellValue
+                                    }
+                                }
+                                imFeeBillRepository.insertFeeBill(
+                                    itemCode = imFeeBill.itemCode,
+                                    itemName = imFeeBill.itemName,
+                                    printingNo = imFeeBill.printingNo,
+                                    feeEstimateBillNo = imFeeBill.feeEstimateBillNo,
+                                    feeEstimateRowNum = imFeeBill.feeEstimateRowNum,
+                                    costItem = imFeeBill.costItem,
+                                    customerCode = imFeeBill.customerCode,
+                                    customerName = imFeeBill.customerName,
+                                    estimateDate = imFeeBill.estimateDate,
+                                    estimateVoucherDate = imFeeBill.estimateVoucherDate,
+                                    estimateDepartmentCode = imFeeBill.estimateDepartmentCode,
+                                    estimateDepartmentName = imFeeBill.estimateDepartmentName,
+                                    estimateUserCode = imFeeBill.estimateUserCode,
+                                    estimateUserName = imFeeBill.estimateUserName,
+                                    selfMaterialAmount = imFeeBill.selfMaterialAmount,
+                                    estimateAmount = imFeeBill.estimateAmount,
+                                    estimateTax = imFeeBill.estimateTax,
+                                    estimateTaxAmount = imFeeBill.estimateTaxAmount,
+                                    feeSettleBillNo = imFeeBill.feeSettleBillNo,
+                                    feeSettleRowNum = imFeeBill.feeSettleRowNum,
+                                    settleCustomerCode = imFeeBill.settleCustomerCode,
+                                    settleCustomerName = imFeeBill.settleCustomerName,
+                                    settleDate = imFeeBill.settleDate,
+                                    settleVoucherDate = imFeeBill.settleVoucherDate,
+                                    settleDepartmentCode = imFeeBill.settleDepartmentCode,
+                                    settleDepartmentName = imFeeBill.settleDepartmentName,
+                                    settleUserCode = imFeeBill.settleUserCode,
+                                    settleUserName = imFeeBill.settleUserName,
+                                    settleAmount = imFeeBill.settleAmount,
+                                    settleTax = imFeeBill.settleTax,
+                                    settleTaxAmount = imFeeBill.settleTaxAmount,
+                                    addValueTax = imFeeBill.addValueTax,
+                                    urbanConstructTax = imFeeBill.urbanConstructTax,
+                                    educateAdditionTax = imFeeBill.educateAdditionTax,
+                                    localEducateAdditionTax = imFeeBill.localEducateAdditionTax,
+                                    taxableIncome = imFeeBill.taxableIncome,
+                                    otherAmount = imFeeBill.otherAmount,
+                                    otherReason = imFeeBill.otherReason,
+                                    invoiceType = imFeeBill.invoiceType,
+                                    invoiceNumber = imFeeBill.invoiceNumber,
+                                    settleCompletion = imFeeBill.settleCompletion,
+                                    customerAccountBankName = imFeeBill.customerAccountBankName,
+                                    customerBankName = imFeeBill.customerBankName,
+                                    customerAccountName = imFeeBill.customerAccountName,
+                                    customerAccountNo = imFeeBill.customerAccountNo,
+                                    organBankName = imFeeBill.organBankName,
+                                    organAccountNo = imFeeBill.organAccountNo,
+                                    remarks = imFeeBill.remarks,
+                                    payBillNo = imFeeBill.payBillNo,
+                                    payRowNum = imFeeBill.payRowNum,
+                                    payDate = imFeeBill.payDate,
+                                    payVoucherDate = imFeeBill.payVoucherDate,
+                                    payDepartmentCode = imFeeBill.payDepartmentCode,
+                                    payDepartmentName = imFeeBill.payDepartmentName,
+                                    payUserCode = imFeeBill.payUserCode,
+                                    payUserName = imFeeBill.payUserName,
+                                    payAmount = imFeeBill.payAmount,
+                                    payTaxAmount = imFeeBill.payTaxAmount,
+                                    organId = organId
+                                )
+                            }
+
+                            OTHERS_SKIP_HEADERS -> {
+                                continue
+                            }
                         }                // 进度计算：10% - 90%
                         val progress = 10 + ((j + 1) * 80 / totalRows)
                         val message = "正在处理 ($currentFileIndex/$totalFiles) - 第 ${j + 1}/$totalRows 行"
@@ -1792,9 +2243,236 @@ enum class ExcelHeaderData(val headers: List<String>) {
             "收款金额"
         )
     ),
+    PURCHASE_INVOICE_HEADERS(
+        listOf(
+            "方向",
+            "采购订单号",
+            "采购订单日期",
+            "采购订单行号",
+            "入库单据号",
+            "入库单据日期",
+            "入库单据行号",
+            "供应商编码",
+            "供应商名称",
+            "地区",
+            "发货地址",
+            "发货人",
+            "发货电话",
+            "订书依据",
+            "业务员编码",
+            "业务员名称",
+            "部门编码",
+            "部门名称",
+            "物品编码",
+            "物品名称",
+            "批次",
+            "定价",
+            "计量单位",
+            "未开票数量",
+            "未开票平均折扣",
+            "未开票金额",
+            "税率(%)",
+            "税金(元)",
+            "仓库编码",
+            "仓库名称",
+            "备注"
+        )
+    ),
+    TOPIC_RECORD_HEADERS(
+        listOf(
+            "选题单号",
+            "物品编码",
+            "物品名称(书名)",
+            "责任编辑编码",
+            "责任编辑名称",
+            "其他编辑",
+            "业务部门编码",
+            "业务部门名称",
+            "业务日期",
+            "分卷册名",
+            "外文书名",
+            "副书名",
+            "丛（套）书名",
+            "中图分类",
+            "正文文种",
+            "选题申报单正文文字",
+            "主要作者",
+            "书稿字数(千字)",
+            "出版类别",
+            "经营方式",
+            "版次时间-年月",
+            "版次",
+            "印次时间-年月",
+            "印次",
+            "开本尺寸名称",
+            "开本别名",
+            "印张",
+            "装订方式",
+            "印数(册)",
+            "累计印数(册)",
+            "定价(元)",
+            "成品尺寸(mm)-长",
+            "成品尺寸(mm)-宽",
+            "内容简介（要求200-1000字）",
+            "目标读者",
+            "本社同类书比较",
+            "国内同类书比较",
+            "营销策略",
+            "渠道分析",
+            "重要选题类型",
+            "合作方",
+            "是否虚拟选题",
+            "是否翻译作品",
+            "是否地图",
+            "选题年度",
+            "选题批次",
+            "是否原创",
+            "是否公版",
+            "是否中小学教材",
+            "是否中小学教辅",
+            "是否高校教材",
+            "是否引进版图书",
+            "引进版图书原书名",
+            "引进版图书原出版地",
+            "引进版图书原出版者",
+            "引进版图书外版ISBN",
+            "引进方式",
+            "版权登记号",
+            "预计来稿时间",
+            "正文文字",
+            "发行范围",
+            "载体形式",
+            "图书类型",
+            "选题申报单-备注",
+            "*云章选题单状态",
+            "三审单号",
+            "业务日期(三审)",
+            "业务部门编码(三审)",
+            "业务部门名称(三审)",
+            "业务员编码(三审)",
+            "业务员名称(三审)",
+            "选题号",
+            "初审人编码",
+            "初审人名称",
+            "初审日期",
+            "初审意见",
+            "复审人编码",
+            "复审人名称",
+            "复审日期",
+            "复审意见",
+            "终审人编码",
+            "终审人名称",
+            "终审日期",
+            "终审意见",
+            "发稿单号",
+            "业务日期(发稿)",
+            "发稿单印次年月",
+            "发稿单印次",
+            "发稿单业务类型",
+            "业务部门编码(发稿)",
+            "业务部门名称(发稿)",
+            "业务员编码(发稿)",
+            "业务员名称(发稿)",
+            "出版期间",
+            "重印物品书号",
+            "重印物品名称",
+            "书号和CIP发放单号",
+            "业务日期(书号申请)",
+            "业务部门编码(书号申请)",
+            "业务部门名称(书号申请)",
+            "业务员编码(书号申请)",
+            "业务员名称(书号申请)",
+            "书号",
+            "CIP信息",
+            "附加码",
+            "cip分类",
+            "中图分类"
+        )
+    ),
+    TOPIC_RECORD_AUTHOR_HEADERS(
+        listOf(
+            "选题单号",
+            "书名",
+            "作者编码",
+            "作者姓名",
+            "主要作者",
+            "著作方式",
+            "所在单位",
+            "职称",
+            "作者简介",
+            "作者背景审查情况",
+            "作者已出版书市场情况",
+            "备注",
+            "国籍",
+            "朝代"
+        )
+    ),
+    FEE_BILL_HEADERS(
+        listOf(
+            "物品编码",
+            "物品名称",
+            "印次",
+            "预估单号",
+            "预估单行号",
+            "费用项目",
+            "往来单位编码",
+            "往来单位",
+            "业务日期",
+            "记账日期",
+            "业务部门编码",
+            "业务部门",
+            "业务员编码",
+            "业务员",
+            "自备材料金额",
+            "预估金额(元)",
+            "税率(%)",
+            "暂估税金(元)",
+            "结算单号",
+            "结算单行号",
+            "往来单位编码（结算）",
+            "往来单位（结算）",
+            "业务日期（结算）",
+            "记账日期（结算）",
+            "业务部门编码（结算）",
+            "业务部门（结算）",
+            "业务员编码（结算）",
+            "业务员（结算）",
+            "本次结算金额(元)",
+            "税率(%)（结算）",
+            "税金(元)",
+            "增值税(元）",
+            "城建税(元）",
+            "教育费附加税(元）",
+            "地方教育附加税(元)",
+            "应纳税所得额(元）",
+            "其他扣款金额(元）",
+            "扣款原因",
+            "发票类型",
+            "发票号",
+            "是否结算完成",
+            "开户行",
+            "开户行分行",
+            "账户名称",
+            "银行账号（结算）",
+            "付款方开户银行（结算）",
+            "付款方银行账号（结算）",
+            "备注",
+            "付款单号",
+            "付款单行号",
+            "业务日期（付款）",
+            "记账日期（付款）",
+            "业务部门编码（付款）",
+            "业务部门（付款）",
+            "业务员编码（付款）",
+            "业务员（付款）",
+            "本次支付金额(元)",
+            "税金(元)（付款）"
+        )
+    ),
     OTHERS_SKIP_HEADERS(
         listOf(
-            "用户属性", "查询权限"
+            "用户属性",
+            "查询权限"
         )
     )
 }
