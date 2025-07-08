@@ -20,6 +20,7 @@ data class ImDepartmentType(
     // 部门类型编码
     @Column("F_CODE")
     var code: String? = null,
+
     @Column("F_SEQ")
     var seq: String? = null
 )

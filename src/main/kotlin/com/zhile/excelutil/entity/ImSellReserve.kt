@@ -78,5 +78,9 @@ data class ImSellReserve(
     var remarks: String? = null,
     //收款金额
     @Column("F_IN_AMOUNT")
-    var inAmount: String? = null
+    var inAmount: String? = null,
+
+    @Column("F_ACCOUNT_DATE")
+    var accountDate: String? = null
+
 )

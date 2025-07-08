@@ -324,9 +324,6 @@ data class ImTopicRecord(
     @Column("F_CIP_TYPE")
     var cipType: String? = null, // CIP分类
 
-    @Column("F_BOOK_NUM_SINO_BOOK_TYPE")
-    var bookNumSinoBookType: String? = null, // 中图分类
-
     // 内部字段 (ID 类型)
     @Column("F_ITEM_ID")
     var itemId: Long? = null, // 物品ID
