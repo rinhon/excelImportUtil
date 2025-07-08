@@ -786,7 +786,7 @@ class FileProcessingService(
 
             STOCK_INIT_HEADERS -> {
                 val stockInits = batchData.filterIsInstance<ImStockInit>()
-//                imStockInitRepository.batchInsertStockInits(stockInits)
+                imStockInitRepository.batchInsertStockInits(stockInits)
             }
 
             SELL_BILL_HEADERS -> {
@@ -797,7 +797,7 @@ class FileProcessingService(
 
             SELL_INVOICE_HEADERS -> {
                 val sellInvoices = batchData.filterIsInstance<ImSellInvoice>()
-//                imSellInvoiceRepository.batchInsertSellInvoices(sellInvoices)
+                imSellInvoiceRepository.batchInsertSellInvoices(sellInvoices)
             }
 
             SELL_RESERVE_HEADERS -> {
@@ -822,22 +822,22 @@ class FileProcessingService(
 
             ROLE_HEADERS -> {
                 val roles = batchData.filterIsInstance<ImRole>()
-//                imSellReserveRepository.batchInsertSellReserves(sellReserves)
+                imRoleRepository.batchInsertRoles(roles)
             }
 
             USER_ROLE_HEADERS -> {
                 val userRoles = batchData.filterIsInstance<ImUserRole>()
-//                imSellReserveRepository.batchInsertSellReserves(sellReserves)
+                imUserRoleRepository.batchInsertUserRole(userRoles)
             }
 
             POSITION_HEADERS -> {
                 val position = batchData.filterIsInstance<ImPosition>()
-//                imSellReserveRepository.batchInsertSellReserves(sellReserves)
+                imPositionRepository.batchInsertPositions(position)
             }
 
             POSITION_USERS_HEADERS -> {
                 val positionUsers = batchData.filterIsInstance<ImPositionUser>()
-//                imSellReserveRepository.batchInsertSellReserves(sellReserves)
+                imPositionUserRepository.batchInsertPositionUsers(positionUsers)
             }
 
             CUSTOMER_HEADERS -> {
@@ -852,22 +852,22 @@ class FileProcessingService(
 
             PURCHASE_INVOICE_HEADERS -> {
                 val imPurchaseInvoices = batchData.filterIsInstance<ImPurchaseInvoice>()
-//                imSellReserveRepository.batchInsertSellReserves(sellReserves)
+                imPurchaseInvoiceRepository.batchInsertPurchaseInvoices(imPurchaseInvoices)
             }
 
             TOPIC_RECORD_HEADERS -> {
                 val topicRecords = batchData.filterIsInstance<ImTopicRecord>()
-//                imSellReserveRepository.batchInsertSellReserves(sellReserves)
+                imTopicRecordRepository.batchInsertTopicRecord(topicRecords)
             }
 
             TOPIC_RECORD_AUTHOR_HEADERS -> {
                 val topicRecordAuthors = batchData.filterIsInstance<ImTopicRecordAuthor>()
-//                imSellReserveRepository.batchInsertSellReserves(sellReserves)
+                imTopicRecordAuthorRepository.batchInsertTopicRecordAuthor(topicRecordAuthors)
             }
 
             FEE_BILL_HEADERS -> {
                 val feeBills = batchData.filterIsInstance<ImFeeBill>()
-//                imSellReserveRepository.batchInsertSellReserves(sellReserves)
+                imFeeBillRepository.batchInsertFeeBills(feeBills)
             }
 
             OTHERS_SKIP_HEADERS -> null
@@ -882,6 +882,7 @@ class FileProcessingService(
         organId: Long
     ): ImFeeBill {
         val imFeeBill = ImFeeBill()
+        imFeeBill.organId = organId
         // 使用headerIndexMap来获取正确的列位置
         headerIndexMap.forEach { (headerName, columnIndex) ->
             val cellValue =

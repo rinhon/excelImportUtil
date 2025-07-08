@@ -4,8 +4,10 @@ import com.zhile.excelutil.dao.ImSellInvoiceRepository
 import com.zhile.excelutil.entity.ImSellInvoice
 import org.springframework.jdbc.core.BatchPreparedStatementSetter
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.stereotype.Repository
 import java.sql.PreparedStatement
 
+@Repository
 class ImSellInvoiceRepositoryImpl(private val jdbcTemplate: JdbcTemplate) : ImSellInvoiceRepository {
     override fun deleteAllImSellInvoice() {
         jdbcTemplate.update("DELETE FROM IM_SELL_INVOICE")
